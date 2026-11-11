@@ -4,6 +4,10 @@ on:
   release:
     types: [published]
 
+concurrency:
+  group: publish-dropnote-image
+  queue: max
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -47,6 +51,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and publish the release image
+        id: image
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -58,3 +63,19 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.release.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Update latest for the current stable release
+        if: ${{ !github.event.release.prerelease && !contains(steps.release.outputs.version, '-') }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          IMAGE: ${{ steps.release.outputs.image }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          latest_release="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)"
+          if [[ "$latest_release" != "$RELEASE_TAG" ]]; then
+            printf 'Leaving latest unchanged. Current GitHub release is %s.\n' "$latest_release"
+            exit 0
+          fi
+          docker buildx imagetools create --tag "${IMAGE}:latest" "${IMAGE}@${IMAGE_DIGEST}"
