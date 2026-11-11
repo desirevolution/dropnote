@@ -3,6 +3,7 @@
  * JSON index maps Slug → Pad and is rewritten atomically on every change
  * (write to a temp file, rename over the target).
  */
+import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { SlugTakenError } from "./slug.ts";
@@ -34,9 +35,15 @@ export interface PadGrant {
   role: GrantRole;
 }
 
+export interface PadAccessRequest {
+  id: string;
+  username: string;
+}
+
 export interface PadRecord {
   owner?: string;
   grants?: PadGrant[];
+  accessRequests?: PadAccessRequest[];
   slug: string;
   kind: "plain" | "encrypted";
   encryption?: EncryptionParameters;
@@ -141,14 +148,45 @@ export class PadStore {
     const current = previous?.find((grant) => grant.username === username)?.role ?? null;
     if (current === role) return false;
     pad.grants = (previous ?? []).filter((grant) => grant.username !== username);
-    if (role) pad.grants.push({ username, role });
+    const previousRequests = pad.accessRequests;
+    if (role) {
+      pad.grants.push({ username, role });
+      pad.accessRequests = previousRequests?.filter((request) => request.username !== username);
+    }
     try {
       this.#save();
     } catch (error) {
       pad.grants = previous;
+      pad.accessRequests = previousRequests;
       throw error;
     }
     return true;
+  }
+
+  requestPadAccess(pad: PadRecord, username: string): void {
+    const requests = pad.accessRequests ?? [];
+    if (requests.some((request) => request.username === username)) return;
+    this.#saveAccessRequests(pad, [...requests, { id: randomUUID(), username }]);
+  }
+
+  resolvePadAccessRequest(pad: PadRecord, id: string, role: GrantRole | null): PadAccessRequest | undefined {
+    const requests = pad.accessRequests ?? [];
+    const request = requests.find((item) => item.id === id);
+    if (!request) return undefined;
+    if (role) this.setPadGrant(pad, request.username, role);
+    else this.#saveAccessRequests(pad, requests.filter((item) => item.id !== id));
+    return request;
+  }
+
+  #saveAccessRequests(pad: PadRecord, requests: PadAccessRequest[]): void {
+    const previous = pad.accessRequests;
+    pad.accessRequests = requests;
+    try {
+      this.#save();
+    } catch (error) {
+      pad.accessRequests = previous;
+      throw error;
+    }
   }
 
   /** Total bytes of Attachment blobs stored across every Pad. */

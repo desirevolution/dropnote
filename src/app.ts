@@ -162,6 +162,23 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
   });
 
   if (config.trustedProxies) {
+    const requestLimits = new RateLimitCounter({ windowMs: 60_000, max: 10 });
+    app.post("/api/pads/:slug/access-requests", (req, res) => {
+      const username = requestUsername(res)!;
+      const verdict = requestLimits.hit(username);
+      if (!verdict.allowed) {
+        res.set("Retry-After", String(verdict.retryAfterSeconds))
+          .status(429).type("text").send("Too many access requests. Try again in a minute.");
+        return;
+      }
+      const slug = req.params.slug as string;
+      const pad = store.getLivePad(slug);
+      if (pad?.owner && !padRole(pad, username)) store.requestPadAccess(pad, username);
+      // Give the same response for missing, private and already accessible spaces.
+      res.redirect(303, `${config.padPath}/${encodeURIComponent(slug)}?access=requested`);
+    });
+
+    const accessState = (pad: PadRecord) => ({ grants: pad.grants ?? [], requests: pad.accessRequests ?? [] });
     app.get("/api/my-spaces", (_req, res) => {
       const username = requestUsername(res)!;
       res.json({ spaces: store.ownedPads(username).map((pad) => ({
@@ -170,6 +187,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
         createdAt: pad.createdAt,
         expiresAt: pad.expiresAt,
         encrypted: pad.kind === "encrypted",
+        accessRequestCount: pad.accessRequests?.length ?? 0,
       })) });
     });
 
@@ -185,7 +203,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     };
     app.get("/api/pads/:slug/access", ownerAccess, (_req, res) => {
       const pad: PadRecord = res.locals.ownedPad;
-      res.json({ grants: pad.grants ?? [] });
+      res.json(accessState(pad));
     });
     app.put("/api/pads/:slug/access", ownerAccess, (req, res) => {
       const pad: PadRecord = res.locals.ownedPad;
@@ -196,7 +214,22 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
         return;
       }
       if (store.setPadGrant(pad, username, role)) options.onGrantChanged?.(pad.slug, username, role);
-      res.json({ grants: pad.grants ?? [] });
+      res.json(accessState(pad));
+    });
+    app.put("/api/pads/:slug/access-requests/:id", ownerAccess, (req, res) => {
+      const pad: PadRecord = res.locals.ownedPad;
+      const { role } = req.body ?? {};
+      if (role !== "read" && role !== "edit" && role !== null) {
+        res.status(400).json({ error: "Choose read, edit or null to decline" });
+        return;
+      }
+      const request = store.resolvePadAccessRequest(pad, req.params.id as string, role);
+      if (!request) {
+        res.status(404).json({ error: "This access request is no longer open" });
+        return;
+      }
+      if (role) options.onGrantChanged?.(pad.slug, request.username, role);
+      res.json(accessState(pad));
     });
   }
 
@@ -286,7 +319,12 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
   const padPage: RequestHandler = (req, res) => {
     const slug = req.params.slug as string;
     const pad = getPadOrAnswer404(store, slug, res, (page) => {
-      page.status(404).type("html").send(renderNotFoundPage());
+      const access = requestUsername(page) ? {
+        action: `/api/pads/${encodeURIComponent(slug)}/access-requests`,
+        requested: req.query.access === "requested",
+        spacePath: `${config.padPath}/${encodeURIComponent(slug)}`,
+      } : undefined;
+      page.status(404).type("html").send(renderNotFoundPage(access));
     });
     if (!pad) return;
     if (pad.kind === "encrypted" && !pad.encryption) {

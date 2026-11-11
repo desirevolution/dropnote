@@ -185,3 +185,85 @@ test("single-user mode ignores identity headers and keeps links usable", async (
   assert.doesNotMatch(await (await request(`/p/${slug}`, owner)).text(), /class="account-name"/);
   assert.throws(() => PadStore.open(dataDir, true), /different MULTIUSER mode/);
 });
+
+test("signed-in visitors can request access privately and the owner can grant or decline", async (t) => {
+  const { request, json, socket, dataDir } = await setup(t, { PAD_PATH: "/space" });
+  assert.equal((await json("/api/pads", owner, "POST", { slug })).status, 201);
+  const pagePath = `/space/${slug}`;
+  const requestsPath = `${api}/access-requests`;
+  const visitorPage = await request(pagePath, collaborator);
+  assert.equal(visitorPage.status, 404);
+  assert.match(await visitorPage.text(), /method="post".*Request access/);
+  const submit = (path: string, username?: string) => request(path, username, {
+    method: "POST", headers: { origin }, redirect: "manual",
+  });
+
+  assert.equal((await submit(requestsPath)).status, 403);
+  assert.equal((await request(requestsPath, collaborator, {
+    method: "POST", headers: { origin: "https://elsewhere.test" }, redirect: "manual",
+  })).status, 403);
+  for (const [path, destination] of [
+    [requestsPath, pagePath], ["/api/pads/missing/access-requests", "/space/missing"],
+  ] as const) {
+    const response = await submit(path, collaborator);
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get("location"), `${destination}?access=requested`);
+    const confirmation = await request(response.headers.get("location")!, collaborator);
+    assert.equal(confirmation.status, 404);
+    assert.match(await confirmation.text(), /If the space is available, your request has been sent to its owner\./);
+  }
+
+  // A client cannot nominate a different user, and repeated submissions are deduplicated.
+  const duplicate = await request(requestsPath, collaborator, {
+    method: "POST", redirect: "manual", headers: { "content-type": "application/json", origin },
+    body: JSON.stringify({ username: "someone-else" }),
+  });
+  assert.equal(duplicate.status, 303);
+  const state = await (await request(`${api}/access`, owner)).json();
+  assert.deepEqual(state.grants, []);
+  assert.equal(state.requests.length, 1);
+  assert.equal(state.requests[0].username, collaborator);
+  assert.deepEqual(PadStore.open(dataDir, true).getLivePad(slug)?.accessRequests, state.requests);
+  const ownerSpaces = await (await request("/api/my-spaces", owner)).json();
+  assert.equal(ownerSpaces.spaces[0].accessRequestCount, 1);
+  assert.equal((await request(api, collaborator)).status, 404);
+  await rejected(socket(slug, collaborator), 404);
+
+  const decision = `${requestsPath}/${state.requests[0].id}`;
+  assert.equal((await json(decision, collaborator, "PUT", { role: "edit" })).status, 404);
+  assert.equal((await json(decision, owner, "PUT", { role: "admin" })).status, 400);
+  const declined = await json(decision, owner, "PUT", { role: null });
+  assert.deepEqual(await declined.json(), { grants: [], requests: [] });
+  assert.equal((await request(pagePath, collaborator)).status, 404);
+  assert.equal((await submit(requestsPath, collaborator)).status, 303);
+  assert.equal((await json(decision, owner, "PUT", { role: "edit" })).status, 404);
+
+  const renewed = await (await request(`${api}/access`, owner)).json();
+  const approved = await json(`${requestsPath}/${renewed.requests[0].id}`, owner, "PUT", { role: "read" });
+  assert.deepEqual(await approved.json(), { grants: [{ username: collaborator, role: "read" }], requests: [] });
+  assert.equal((await request(pagePath, collaborator)).status, 200);
+  assert.equal((await control(socket(slug, collaborator), "replay-done")).writable, false);
+
+  assert.equal((await submit(requestsPath, "charlie")).status, 303);
+  const manualGrant = await json(`${api}/access`, owner, "PUT", { username: "charlie", role: "edit" });
+  assert.deepEqual((await manualGrant.json()).requests, []);
+  assert.equal((await control(socket(slug, "charlie"), "replay-done")).writable, true);
+  assert.equal((await submit(requestsPath, "charlie")).status, 303);
+  const finalState = await (await request(`${api}/access`, owner)).json();
+  assert.deepEqual(finalState.requests, []);
+});
+
+test("access request rate limits are per account and independent of whether a space exists", async (t) => {
+  const { request, json } = await setup(t);
+  assert.equal((await json("/api/pads", owner, "POST", { slug })).status, 201);
+  const missing = "/api/pads/missing/access-requests";
+  const existing = `${api}/access-requests`;
+  const submit = (path: string, username: string) => request(path, username, { method: "POST", redirect: "manual" });
+  for (let i = 0; i < 10; i++) assert.equal((await submit(missing, collaborator)).status, 303);
+  for (const path of [existing, missing]) {
+    const limited = await submit(path, collaborator);
+    assert.equal(limited.status, 429);
+    assert.ok(limited.headers.get("retry-after"));
+  }
+  assert.equal((await submit(existing, "charlie")).status, 303);
+});

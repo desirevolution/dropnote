@@ -3,7 +3,7 @@
 
 services:
   dropnote:
-    image: ghcr.io/desirevolution/dropnote:latest
+    image: ghcr.io/desirevolution/dropnote:${DROPNOTE_VERSION:-0.1.0}
     ports:
       - "${DROPNOTE_PORT:-8080}:${PORT:-3000}"
     env_file:

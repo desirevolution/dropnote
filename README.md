@@ -32,6 +32,22 @@ docker compose -f compose.dev.yaml up -d --build
 
 Both Compose files use the same service and volume names. To run the dev variant alongside a production instance, select a separate Compose project with `-p dropnote-dev` and set a different `DROPNOTE_PORT`.
 
+## GitHub releases
+
+Push the project to [desirevolution/dropnote](https://github.com/desirevolution/dropnote), including [the release workflow](.github/workflows/release.yml) and [Dependabot configuration](.github/dependabot.yml), before publishing the first release.
+
+1. Open [Releases](https://github.com/desirevolution/dropnote/releases) and choose **Draft a new release**.
+2. Create a tag such as `v0.1.0` or `v0.2.0-rc.1` and select the branch or commit to release.
+3. Select **Publish release**. The **Publish Docker image** workflow builds the tagged revision for `linux/amd64` and `linux/arm64` and pushes a versioned image using GitHub's built-in token. Follow the job under **Actions**.
+
+Release `v0.1.0` publishes `ghcr.io/desirevolution/dropnote:0.1.0`.
+
+GHCR package visibility is managed under **Packages**. Public images can be pulled anonymously. For a private image, sign in to `ghcr.io` on the deployment machine with a classic personal access token that has `read:packages` and access to the package. See [GitHub Container Registry authentication](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-to-the-container-registry).
+
+Dependabot checks npm dependencies, the Docker base image and workflow actions weekly.
+
+## Running from source
+
 Requires Node.js 24 or newer. Install development dependencies to build the browser bundle from source.
 
 ```sh
@@ -55,13 +71,13 @@ Browser bookmarks, start-page choices and remembered keys from the previous buil
 | Choose what opens at the site root | Use **⋯ → Set as start page** on any space. The choice is saved in this browser. |
 | Create a space | **New space** offers encryption and expiry. **More options** has the optional name and editing PIN. A generated address looks like `/p/amber-otter`. |
 | Return to a space | **Saved spaces** shows bookmarks. In single-user mode it also lists spaces created in this browser until they are deleted or expire. In multiuser mode, **My spaces** lists the spaces you own across devices. |
-| Share a link | Use **Copy link** or **QR code**. In multiuser mode, first use **⋯ → Manage access** to grant the recipient access. Give recipients the passphrase separately for encrypted spaces. |
+| Share a link | Use **Copy link** or **QR code**. In multiuser mode, grant access under **⋯ → Manage access** or let the recipient request it when opening the link. Give recipients the passphrase separately for encrypted spaces. |
 | Edit or copy the note | Use the live plain-text editor and **Copy text**. **Full width** moves the file list below the editor until you toggle it back. |
 | Share a screenshot or file | Add files, drag and drop, or paste an image. Open an image preview and choose **Copy image** to copy the full-resolution image as PNG. Clipboard access depends on browser support and permission. |
 | Clear the shared workspace | **⋯ → Clear note** and **⋯ → Remove all files** are separate confirmed actions. |
 | Manage an additional space | **⋯ → Change expiry** and **⋯ → Delete space** require write access. In multiuser mode these actions are available to the owner. The default expiry is seven days unless configured otherwise. |
 
-The note saves automatically and shows other active cursors. **Changes pending** means the server has yet to acknowledge one or more changes. **Synced** means all local updates have been acknowledged. If the connection drops, loaded content stays visible and editing resumes after reconnection.
+The note saves automatically and shows other active cursors. The sync indicator stays steady during quick saves. **Changes pending** appears when a server acknowledgment takes longer and clears shortly after the last acknowledgment. If the connection drops, loaded content stays visible and editing resumes after reconnection.
 
 ### Encrypted spaces
 
@@ -208,7 +224,7 @@ Dropnote uses case-sensitive login names up to 128 characters with letters `A–
 | Can edit | Read and edit the note, upload files and remove files. |
 | Authenticated account at `/default` | Open and edit the permanent shared space. |
 
-New spaces start private. Use **⋯ → Manage access** to grant or remove permission. Removing a grant disconnects that user's open editor and prevents new requests. A downloaded file or previously copied text stays with its recipient. Encrypted spaces still require their passphrase. If the space has an editing PIN, editors and owners still need it to write. Bookmarks, the browser's start page and remembered encryption keys are scoped to the active login.
+New spaces start private. A signed-in recipient without permission can choose **Request access** when opening a link. The response is the same for missing and private spaces. Dropnote keeps one open request per user and space. The owner sees request counts in **My spaces** and can allow reading, allow editing or decline in **Manage access**. After approval the same link opens the space. Owners can also grant or remove permissions directly. Removing a grant disconnects that user's open editor and prevents new requests. A downloaded file or previously copied text stays with its recipient. Encrypted spaces still require their passphrase. If the space has an editing PIN, editors and owners still need it to write. Bookmarks, the browser's start page and remembered encryption keys are scoped to the active login.
 
 ### Nginx transport example
 

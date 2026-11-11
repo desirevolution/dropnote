@@ -271,7 +271,10 @@ ${PAD_CSS}
       <h2 id="space-access-title">Manage access</h2>
       <button type="button" class="icon-button quiet" data-close-dialog aria-label="Close">${icon("close")}</button>
     </header>
-    <p>Only you and the people listed here can open this space.</p>
+    <section id="space-access-requests" aria-labelledby="space-access-requests-title" hidden>
+      <h3 id="space-access-requests-title">Access requests</h3>
+      <ul class="account-list" id="space-access-request-list"></ul>
+    </section>
     <form id="space-access-form" class="passphrase-form">
       <label>Username <input name="username" required maxlength="128" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
       <label>Permission
@@ -377,7 +380,7 @@ function plural(count: number, unit: string): string {
 }
 
 /** The page shown for a Slug that has no Pad (expired or never existed). */
-export function renderNotFoundPage(): string {
+export function renderNotFoundPage(access?: { action: string; requested: boolean; spacePath: string }): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -388,12 +391,20 @@ export function renderNotFoundPage(): string {
 <style>
 ${THEME_CSS}
   body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 60rem; padding: 1rem; background: var(--bg); color: var(--fg); }
+  a { color: var(--accent); }
+  button { font: inherit; background: var(--accent); color: var(--on-accent); border: 0; border-radius: .25rem; padding: .5rem .85rem; cursor: pointer; }
 </style>
 </head>
 <body>
 <main>
-<h1>Space not found</h1>
-<p>There’s no space at this address. It may have expired, been deleted, or never existed.</p>
+<h1>${access ? "Space unavailable" : "Space not found"}</h1>
+${access
+  ? access.requested
+    ? `<p role="status">If the space is available, your request has been sent to its owner.</p>
+<p><a href="${escapeHtml(access.spacePath)}">Try opening the space again</a></p>`
+    : `<p>This space may be unavailable or require permission to open.</p>
+<form method="post" action="${escapeHtml(access.action)}"><button type="submit">Request access</button></form>`
+  : "<p>There’s no space at this address. It may have expired, been deleted, or never existed.</p>"}
 <p><a href="/default">Open the shared space</a> or create a new space from there.</p>
 </main>
 </body>

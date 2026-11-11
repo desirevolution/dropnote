@@ -11,6 +11,7 @@ async function getJson(url, options) {
 }
 
 export function initSpaceAccess(api) {
+  const openAccess = document.querySelector('[data-open-dialog="space-access-dialog"]');
   const owned = $("owned-spaces-list");
   const ownedStatus = $("owned-spaces-status");
   let loadNumber = 0;
@@ -34,6 +35,21 @@ export function initSpaceAccess(api) {
           space.expiresAt ? `Expires ${dateLabel(space.expiresAt)}` : "",
         ].filter(Boolean).join(" · ");
         row.append(link, detail);
+        if (space.accessRequestCount > 0) {
+          const requests = document.createElement("a");
+          requests.href = `${space.path}#space-access-dialog`;
+          requests.textContent = `${space.accessRequestCount} access ${space.accessRequestCount === 1 ? "request" : "requests"}`;
+          requests.setAttribute("aria-label", `${requests.textContent} for ${link.textContent}`);
+          if (openAccess && location.pathname === space.path) {
+            requests.addEventListener("click", (event) => {
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              event.preventDefault();
+              owned.closest("dialog").close();
+              openAccess.click();
+            });
+          }
+          row.append(requests);
+        }
         owned.append(row);
       }
     } catch {
@@ -44,6 +60,8 @@ export function initSpaceAccess(api) {
   const form = $("space-access-form");
   if (!form) return;
   const list = $("space-access-list");
+  const requestList = $("space-access-request-list");
+  const requestSection = $("space-access-requests");
   const status = $("space-access-status");
   const submit = form.querySelector('button[type="submit"]');
   const accessApi = `${api}/access`;
@@ -55,7 +73,31 @@ export function initSpaceAccess(api) {
     submit.disabled = true;
     status.textContent = "Working…";
     try {
-      const { grants } = await operation();
+      const { grants, requests } = await operation();
+      requestList.replaceChildren(...requests.map(({ id, username }) => {
+        const row = document.createElement("li");
+        const name = document.createElement("span");
+        const actions = document.createElement("div");
+        name.textContent = username;
+        actions.className = "dialog-actions";
+        for (const [label, role] of [["Allow reading", "read"], ["Allow editing", "edit"], ["Decline", null]]) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = label;
+          button.setAttribute("aria-label", `${label} for ${username}`);
+          button.addEventListener("click", () => {
+            void manage(() => getJson(`${api}/access-requests/${encodeURIComponent(id)}`, {
+              method: "PUT",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ role }),
+            }), role ? `Access granted to ${username}.` : `Request from ${username} declined.`);
+          });
+          actions.append(button);
+        }
+        row.append(name, actions);
+        return row;
+      }));
+      requestSection.hidden = requests.length === 0;
       list.replaceChildren(...grants.map(({ username, role }) => {
         const row = document.createElement("li");
         const name = document.createElement("span");
@@ -85,9 +127,11 @@ export function initSpaceAccess(api) {
     }), role ? `Access saved for ${username}.` : `Access removed for ${username}.`);
   }
 
-  document.querySelector('[data-open-dialog="space-access-dialog"]').addEventListener("click", () => {
+  openAccess.addEventListener("click", () => {
     if (busy) return;
     list.replaceChildren();
+    requestList.replaceChildren();
+    requestSection.hidden = true;
     void manage(() => getJson(accessApi));
   });
   form.addEventListener("submit", (event) => {
@@ -95,4 +139,5 @@ export function initSpaceAccess(api) {
     const data = new FormData(form);
     void setGrant(data.get("username").trim(), data.get("role"));
   });
+  if (location.hash === "#space-access-dialog") openAccess.click();
 }

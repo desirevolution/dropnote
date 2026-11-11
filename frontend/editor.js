@@ -15,6 +15,7 @@ const metadata = JSON.parse($("pad-metadata").textContent);
 const encrypted = metadata.encrypted;
 const workspace = $("workspace");
 const syncStatus = $("sync-status");
+const SYNC_STATUS_DELAY_MS = 500;
 const syncError = $("sync-error");
 const noteCopy = $("copy-note");
 const fullWidth = $("full-width");
@@ -35,6 +36,8 @@ let generation = 0;
 let writable = false;
 let connectionState = "connecting";
 let changesPending = false;
+let pendingVisible = false;
+let syncStatusTimer;
 let noteText = "";
 let fileCount = 0;
 let clearing = false;
@@ -106,6 +109,10 @@ function setState(state) {
   }
   const active = writable || state === "readonly";
   if (active) workspace.hidden = false;
+  if (connectionState !== state) {
+    clearTimeout(syncStatusTimer);
+    pendingVisible = changesPending;
+  }
   connectionState = state;
   updateSyncStatus();
   $("unlock-editing").hidden = state !== "readonly" || !metadata.pinProtected || metadata.canEdit === false;
@@ -114,10 +121,26 @@ function setState(state) {
   updateActions();
 }
 
+function setChangesPending(pending) {
+  changesPending = pending;
+  clearTimeout(syncStatusTimer);
+
+  if (connectionState !== "writable") {
+    pendingVisible = pending;
+    updateSyncStatus();
+  } else if (pending !== pendingVisible) {
+    // Wait through short round trips and keep a visible status steady during bursts.
+    syncStatusTimer = setTimeout(() => {
+      pendingVisible = pending;
+      updateSyncStatus();
+    }, SYNC_STATUS_DELAY_MS);
+  }
+}
+
 function updateSyncStatus() {
   const active = connectionState === "writable" || connectionState === "readonly";
   const failed = connectionState === "unreadable" || connectionState === "missing";
-  syncStatus.dataset.state = failed ? "error" : active && !changesPending ? "live" : "pending";
+  syncStatus.dataset.state = failed ? "error" : active && !pendingVisible ? "live" : "pending";
   const label = {
     writable: "Synced",
     readonly: "Read only",
@@ -128,7 +151,7 @@ function updateSyncStatus() {
     locked: "Locked",
   }[connectionState];
   const pending = "Changes pending";
-  const status = changesPending
+  const status = pendingVisible
     ? connectionState === "writable" ? pending : `${label} · ${pending}`
     : label;
   if (syncStatus.textContent !== status) syncStatus.textContent = status;
@@ -196,10 +219,7 @@ async function openPad(key = null) {
       setState(state);
       if (state === "unreadable") showSyncError("The space data could not be read. Reload the page to try again.");
     },
-    onPendingChange(pending) {
-      changesPending = pending;
-      updateSyncStatus();
-    },
+    onPendingChange: setChangesPending,
     onPresence: (event) => note.presence(event),
     onExpiry: showExpiry,
     onMissing,
@@ -222,7 +242,8 @@ function closeWorkspace() {
   }
   workspace.hidden = true;
   $("note-copy-status").textContent = "";
-  changesPending = false;
+  clearTimeout(syncStatusTimer);
+  changesPending = pendingVisible = false;
 }
 
 function lockPad(announce) {
