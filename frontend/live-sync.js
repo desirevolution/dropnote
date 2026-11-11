@@ -2,6 +2,7 @@ import * as Y from "yjs";
 import { createUpdateCodec } from "./encrypted-sync.js";
 import { decodeBase64url, encodeBase64url, decryptBlob, encryptBlob } from "./crypto.js";
 
+const ACK_TIMEOUT_MS = 10_000;
 const remote = Symbol("remote");
 const encode = new TextEncoder();
 const decode = new TextDecoder();
@@ -42,6 +43,7 @@ export function startLiveSync(doc, { metadata, key, proof, cursorKey, onState, o
     connection.binaryType = "arraybuffer";
     let incoming = Promise.resolve();
     let sending = false;
+    let ackTimer;
     const active = () => !stopped && socket === connection && connection.readyState === WebSocket.OPEN;
     const timer = setTimeout(() => connection.close(), 12_000);
 
@@ -51,7 +53,10 @@ export function startLiveSync(doc, { metadata, key, proof, cursorKey, onState, o
       try {
         const item = pending[0];
         item.frame ??= codec ? await codec.seal(item.update) : item.update;
-        if (active()) connection.send(item.frame);
+        if (!active()) return;
+        connection.send(item.frame);
+        // Reconnect and replay if the server stops acknowledging writes.
+        ackTimer = setTimeout(() => connection.close(), ACK_TIMEOUT_MS);
       } catch {
         connection.close();
       }
@@ -81,6 +86,7 @@ export function startLiveSync(doc, { metadata, key, proof, cursorKey, onState, o
           onState(writable ? "writable" : "readonly");
           flush();
         } else if (message.type === "update-accepted" && sending) {
+          clearTimeout(ackTimer);
           pending.shift();
           if (pending.length === 0) onPendingChange(false);
           sending = false;
@@ -111,6 +117,7 @@ export function startLiveSync(doc, { metadata, key, proof, cursorKey, onState, o
 
     connection.addEventListener("close", ({ code }) => {
       clearTimeout(timer);
+      clearTimeout(ackTimer);
       if (socket !== connection || stopped) return;
       ready = writable = false;
       onState("reconnecting");

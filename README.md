@@ -77,7 +77,7 @@ Browser bookmarks, start-page choices and remembered keys from the previous buil
 | Clear the shared workspace | **⋯ → Clear note** and **⋯ → Remove all files** are separate confirmed actions. |
 | Manage an additional space | **⋯ → Change expiry** and **⋯ → Delete space** require write access. In multiuser mode these actions are available to the owner. The default expiry is seven days unless configured otherwise. |
 
-The note saves automatically and shows other active cursors. The sync indicator stays steady during quick saves. **Changes pending** appears when a server acknowledgment takes longer and clears shortly after the last acknowledgment. If the connection drops, loaded content stays visible and editing resumes after reconnection.
+The note saves automatically and shows other active cursors. The editor shows **Connected** while live sync is available. If the connection drops or a write goes unacknowledged for 10 seconds, Dropnote reconnects and retries unconfirmed changes. Loaded content stays visible, and **Changes pending** appears while editing is blocked and changes are still queued.
 
 ### Encrypted spaces
 
