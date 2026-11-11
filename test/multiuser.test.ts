@@ -1,0 +1,187 @@
+import assert from "node:assert/strict";
+import { once } from "node:events";
+import { rm } from "node:fs/promises";
+import { test, type TestContext } from "node:test";
+import { WebSocket } from "ws";
+import { loadConfig } from "../src/config.ts";
+import { startServer } from "../src/server.ts";
+import { PadStore } from "../src/store.ts";
+import { makeTempDataDir } from "./helpers/server.ts";
+
+const origin = "https://dropnote.example.test";
+const env = { PORT: "0", BASE_URL: origin, MULTIUSER: "true", TRUSTED_PROXIES: "127.0.0.0/8,::1" };
+const owner = "alice";
+const collaborator = "bob";
+const slug = "private-space";
+const api = `/api/pads/${slug}`;
+
+async function setup(t: TestContext, overrides: NodeJS.ProcessEnv = {}) {
+  const dataDir = await makeTempDataDir();
+  const server = await startServer(loadConfig({ ...env, DATA_DIR: dataDir, ...overrides }));
+  t.after(async () => {
+    await server.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
+  const base = `http://127.0.0.1:${server.port}`;
+  function request(path: string, username?: string, options: RequestInit = {}) {
+    const headers = new Headers(options.headers);
+    if (username) headers.set("X-Forwarded-User", username);
+    return fetch(base + path, { ...options, headers, signal: AbortSignal.timeout(5_000) });
+  }
+  function json(path: string, username: string, method: string, data: object) {
+    return request(path, username, { method, headers: { "content-type": "application/json", origin }, body: JSON.stringify(data) });
+  }
+  function socket(space: string, username?: string, options: { token?: string; proof?: string; origin?: string } = {}) {
+    const headers = { ...(username ? { "x-forwarded-user": username } : {}), origin: options.origin ?? origin };
+    const protocols = options.proof ? ["share-tool", `proof.${options.proof}`] : ["share-tool"];
+    const url = `${base.replace("http:", "ws:")}/sync/${space}${options.token ? `?token=${options.token}` : ""}`;
+    const ws = new WebSocket(url, protocols, { headers, handshakeTimeout: 3_000 });
+    t.after(() => ws.terminate());
+    return ws;
+  }
+  return { request, json, socket, dataDir };
+}
+
+function control(socket: WebSocket, type: string): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.off("message", receive);
+      reject(new Error(`Missing WebSocket message: ${type}`));
+    }, 3_000);
+    function receive(data: Buffer, binary: boolean) {
+      if (binary) return;
+      const message = JSON.parse(data.toString());
+      if (message.type !== type) return;
+      clearTimeout(timer);
+      socket.off("message", receive);
+      resolve(message);
+    }
+    socket.on("message", receive);
+  });
+}
+
+async function rejected(socket: WebSocket, status: number) {
+  await assert.rejects(once(socket, "open"), { message: `Unexpected server response: ${status}` });
+}
+
+test("multiuser validates trusted socket peers and usernames on HTTP and WebSocket", async (t) => {
+  const { request, socket } = await setup(t);
+  assert.equal((await request("/")).status, 403);
+  assert.equal((await request("/", "alice, bob")).status, 403);
+  assert.match(await (await request("/default", owner)).text(), /class="account-name" title="alice">alice</);
+  assert.equal((await request("/default", collaborator)).status, 200);
+  assert.equal((await request("/api/pads", owner, { method: "POST", headers: { origin: "https://other.test" } })).status, 403);
+  await rejected(socket("default"), 403);
+  await rejected(socket("default", owner, { origin: "null" }), 403);
+  assert.equal((await control(socket("default", collaborator), "replay-done")).writable, true);
+
+  const untrusted = await setup(t, { TRUSTED_PROXIES: "192.0.2.1" });
+  const headers = { "x-forwarded-for": "192.0.2.1", "x-real-ip": "192.0.2.1" };
+  assert.equal((await untrusted.request("/", owner, { headers })).status, 403);
+  await rejected(untrusted.socket("default", owner), 403);
+  assert.throws(() => loadConfig({ MULTIUSER: "true" }), /TRUSTED_PROXIES/);
+  assert.throws(() => loadConfig({ MULTIUSER: "true", TRUSTED_PROXIES: "::1/129" }), /TRUSTED_PROXIES/);
+});
+
+test("private spaces have owner-only management and revocable read and edit roles", async (t) => {
+  const { request, json, socket, dataDir } = await setup(t);
+  assert.equal((await json("/api/pads", owner, "POST", { slug, owner: collaborator })).status, 201);
+  const ownerPage = await request(`/p/${slug}`, owner);
+  assert.match(ownerPage.headers.get("cache-control") ?? "", /private, no-store/);
+  assert.match(await ownerPage.text(), /Manage access/);
+  const bytes = Buffer.from("private file");
+  const uploaded = await request(`${api}/attachments`, owner, { method: "POST", body: bytes });
+  assert.equal(uploaded.status, 201);
+  const file = `${api}/attachments/${(await uploaded.json()).blobId}`;
+
+  for (const path of [`/p/${slug}`, api, file, `${api}/access`]) {
+    assert.equal((await request(path, collaborator)).status, 404);
+  }
+  await rejected(socket(slug, collaborator), 404);
+  const list = async (username: string) => (await (await request("/api/my-spaces", username)).json()).spaces;
+  assert.deepEqual((await list(owner)).map((space: { slug: string }) => space.slug), [slug]);
+  assert.deepEqual(await list(collaborator), []);
+  assert.equal((await json("/api/pads/default/access", owner, "PUT", { username: collaborator, role: "read" })).status, 403);
+
+  const grant = (role: "read" | "edit" | null) => json(`${api}/access`, owner, "PUT", { username: collaborator, role });
+  assert.equal((await grant("read")).status, 200);
+  assert.equal((await request(api, "Bob")).status, 404);
+  const page = await (await request(`/p/${slug}`, collaborator)).text();
+  assert.match(page, /"canEdit":false/);
+  assert.doesNotMatch(page, /id="space-access-dialog"|id="delete-pad"/);
+  assert.deepEqual(Buffer.from(await (await request(file, collaborator)).arrayBuffer()), bytes);
+  assert.equal((await request(`${api}/attachments`, collaborator, { method: "POST", body: bytes })).status, 403);
+  assert.equal((await request(file, collaborator, { method: "DELETE" })).status, 403);
+  assert.equal((await json(`${api}/pin`, collaborator, "POST", { pin: "1234" })).status, 403);
+  const reader = socket(slug, collaborator);
+  assert.equal((await control(reader, "replay-done")).writable, false);
+  const refusedWrite = control(reader, "write-rejected");
+  reader.send(Buffer.from("bad edit"));
+  await refusedWrite;
+
+  const roleChanged = once(reader, "close");
+  assert.equal((await grant("edit")).status, 200);
+  assert.equal((await roleChanged)[0], 4003);
+  const editor = socket(slug, collaborator);
+  assert.equal((await control(editor, "replay-done")).writable, true);
+  assert.deepEqual(await list(collaborator), []);
+  const observer = socket(slug, owner);
+  await control(observer, "replay-done");
+  const presence = control(observer, "presence");
+  editor.send(JSON.stringify({ type: "presence", username: "forged", data: "YQ" }));
+  assert.equal((await presence).username, collaborator);
+  const accepted = control(editor, "update-accepted");
+  editor.send(Buffer.from("accepted edit"));
+  await accepted;
+  assert.equal((await request(`${api}/attachments`, collaborator, { method: "POST", body: bytes })).status, 201);
+  assert.equal((await request(file, collaborator, { method: "DELETE" })).status, 204);
+  assert.equal((await request(api, collaborator, { method: "DELETE" })).status, 403);
+  assert.equal((await json(`${api}/ttl`, collaborator, "POST", { ttl: "never" })).status, 403);
+  assert.equal((await json(`${api}/access`, collaborator, "PUT", { username: "charlie", role: "edit" })).status, 403);
+
+  const stored = PadStore.open(dataDir, true).getLivePad(slug);
+  assert.equal(stored?.owner, owner);
+  assert.deepEqual(stored?.grants, [{ username: collaborator, role: "edit" }]);
+  assert.throws(() => PadStore.open(dataDir), /different MULTIUSER mode/);
+  const revoked = once(editor, "close");
+  assert.equal((await grant(null)).status, 200);
+  assert.equal((await revoked)[0], 4004);
+  await rejected(socket(slug, collaborator), 404);
+  assert.equal((await request(api, collaborator)).status, 404);
+  assert.equal((await json(`${api}/ttl`, owner, "POST", { ttl: "never" })).status, 200);
+  assert.equal((await request(api, owner, { method: "DELETE" })).status, 204);
+  assert.deepEqual(await list(owner), []);
+});
+
+test("multiuser grants layer with encryption proof and account-bound editing PIN", async (t) => {
+  const { request, json, socket } = await setup(t);
+  const { createHash, randomBytes } = await import("node:crypto");
+  const proof = randomBytes(32).toString("base64url");
+  const encryption = {
+    salt: randomBytes(16).toString("base64url"),
+    check: randomBytes(29).toString("base64url"),
+    proofHash: createHash("sha256").update(proof).digest("base64url"),
+  };
+  assert.equal((await json("/api/pads", owner, "POST", { slug, encrypted: true, encryption, pin: "1234" })).status, 201);
+  await rejected(socket(slug, collaborator, { proof }), 404);
+  assert.equal((await json(`${api}/access`, owner, "PUT", { username: collaborator, role: "edit" })).status, 200);
+  await rejected(socket(slug, collaborator), 403);
+  assert.equal((await control(socket(slug, collaborator, { proof }), "replay-done")).writable, false);
+  const pin = await request(`${api}/pin`, owner, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-pad-proof": proof },
+    body: JSON.stringify({ pin: "1234" }),
+  });
+  assert.equal(pin.status, 200);
+  const { token } = await pin.json();
+  assert.equal((await control(socket(slug, owner, { token, proof }), "replay-done")).writable, true);
+  assert.equal((await control(socket(slug, collaborator, { token, proof }), "replay-done")).writable, false);
+});
+
+test("single-user mode ignores identity headers and keeps links usable", async (t) => {
+  const { request, json, dataDir } = await setup(t, { MULTIUSER: "false" });
+  assert.equal((await json("/api/pads", owner, "POST", { slug })).status, 201);
+  assert.equal((await request(api)).status, 200);
+  assert.doesNotMatch(await (await request(`/p/${slug}`, owner)).text(), /class="account-name"/);
+  assert.throws(() => PadStore.open(dataDir, true), /different MULTIUSER mode/);
+});

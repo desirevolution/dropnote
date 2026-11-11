@@ -1,0 +1,33 @@
+{
+  "name": "dropnote",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-hosted sharing tool: Pads combining a plain-text Note with Attachments, optionally end-to-end encrypted.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/main.ts",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "build": "esbuild frontend/editor.js --bundle --minify --format=esm --outfile=public/js/editor.bundle.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "ws": "^8.22.2",
+    "yjs": "^13.6.33"
+  },
+  "devDependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@types/express": "^5.0.1",
+    "@types/node": "^24.10.1",
+    "@types/ws": "^8.18.2",
+    "esbuild": "^0.28.2",
+    "qrcode": "^1.5.4",
+    "typescript": "^5.9.3",
+    "y-codemirror.next": "^0.3.6"
+  }
+}

@@ -1,0 +1,7 @@
+# Client-side encryption for Pads
+
+The browser derives a 256-bit Pad Key from a Passphrase using PBKDF2-HMAC-SHA-256 with 600,000 iterations and a random 16-byte salt. The Share Link carries the Pad address. The server stores the salt, an authenticated empty AES-GCM frame for local unlock verification, and the SHA-256 digest of a separate HKDF-derived access proof. The relay and HTTP endpoints verify this proof where access requires opening an Encrypted Pad. Optional editing PINs add a distinct server-side write check.
+
+The browser seals Yjs updates with AES-GCM. This covers the Note and attachment metadata, including thumbnails. Attachment bytes are sealed in chunks. A separate derived key protects transient cursor messages. The server can see operational metadata such as sizes and timestamps. The browser must receive the intended application code, and the Passphrase must withstand guessing against a copy of stored data.
+
+By default the browser holds the Key for the current visit. When the user chooses to keep the Pad unlocked, its derived Key is saved in that browser profile. Locking clears the saved Key and the open Pad state in other tabs. The Passphrase has no reset or rotation. The prior format with a Key in the Share Link is no longer supported.

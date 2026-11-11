@@ -1,0 +1,28 @@
+# Keep the build context to what the image actually copies: package.json,
+# package-lock.json, src/ and frontend/. Everything else — local state,
+# dependencies, tests, docs, agent metadata — is rebuilt or irrelevant.
+
+# Version control and agent metadata
+.git
+.gitignore
+AGENTS.md
+*.md
+
+# Local state and dependencies — the image builds its own
+node_modules
+data
+.worktrees
+
+# Tests, docs and tooling the image does not need
+test
+docs
+.scratch
+public
+tsconfig.json
+
+# Local configuration — never bake a host's .env into the image
+.env*
+
+# Docker's own files
+Dockerfile
+.dockerignore
