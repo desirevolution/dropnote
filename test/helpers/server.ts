@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const MAIN_ENTRY = fileURLToPath(new URL("../../src/main.ts", import.meta.url));
 
 /** The line src/main.ts prints once the server accepts connections. */
-const LISTEN_PATTERN = /share-tool listening on port (\d+) \(all interfaces\)/;
+const LISTEN_PATTERN = /dropnote listening on port (\d+) \(all interfaces\)/;
 
 export interface RunningServer {
   baseUrl: string;
@@ -27,7 +27,7 @@ export interface ExitedServer {
 
 /** A fresh, empty data directory for one test run. */
 export async function makeTempDataDir(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), "share-tool-test-"));
+  return mkdtemp(path.join(tmpdir(), "dropnote-test-"));
 }
 
 function childEnv(overrides: Record<string, string | undefined>): NodeJS.ProcessEnv {

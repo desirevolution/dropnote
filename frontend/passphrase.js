@@ -20,11 +20,11 @@ async function derivePurposeKey(key, purpose) {
 }
 
 export async function padProof(key) {
-  return encodeBase64url(await derivePurposeKey(key, "share-tool v1 write proof"));
+  return encodeBase64url(await derivePurposeKey(key, "dropnote v1 write proof"));
 }
 
 export function presenceKey(key) {
-  return derivePurposeKey(key, "share-tool v1 cursor presence");
+  return derivePurposeKey(key, "dropnote v1 cursor presence");
 }
 
 export async function createEncryption(passphrase) {

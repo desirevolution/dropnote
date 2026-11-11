@@ -2,55 +2,50 @@
 
 Dropnote is a self-hosted web app for sharing plain-text notes and files. A space has its own link, live editing and optional end-to-end encryption.
 
+[GitHub repository](https://github.com/desirevolution/dropnote) · [Releases](https://github.com/desirevolution/dropnote/releases)
+
 ## Quick start with Docker Compose
 
-From the repository root, run:
+Download [`compose.yaml`](compose.yaml) and run the following command from the directory where you saved it.
 
 ```sh
-docker compose up -d --build
+docker compose up -d
 ```
 
-Open <http://localhost:8080>. Compose builds the image and stores data in a named volume. Copy [`.env.example`](.env.example) to `.env` to override settings. `SHARE_TOOL_PORT` is the published host port, and `PORT` is the port inside the container. Compose defaults them to 8080 and 3000 respectively.
+Open <http://localhost:8080>. Compose pulls `ghcr.io/desirevolution/dropnote:0.1.0` and stores data in a named volume. Copy [`.env.example`](.env.example) to `.env` for optional settings. `DROPNOTE_PORT` is the published host port and `PORT` is the port inside the container. They default to 8080 and 3000 respectively.
 
-Use `docker compose stop` to stop the app and rerun the startup command to rebuild it after an update. Keep the same Compose project and volume when updating. See [Data volume and backups](#data-volume-and-backups) for a backup and restore example.
+To upgrade, set `DROPNOTE_VERSION` in `.env` to the desired release tag without the leading `v`, then run `docker compose pull` and `docker compose up -d`. Keep the same Compose project and volume. See [Data volume and backups](#data-volume-and-backups) for a backup and restore example.
 
-For a standalone container:
+For a standalone container, use the same release image.
 
 ```sh
-docker build -t dropnote .
-docker run -d --name dropnote -p 8080:3000 -v share-tool-data:/app/data dropnote
+docker run -d --name dropnote -p 8080:3000 -v dropnote-data:/app/data ghcr.io/desirevolution/dropnote:0.1.0
 ```
 
-## GitHub releases
+### Build locally with Compose
 
-Commit and push the project, including [the release workflow](.github/workflows/release.yml) and [Dependabot configuration](.github/dependabot.yml), before publishing the first release. Name the repository `dropnote` to publish under `ghcr.io/<owner>/dropnote`.
-
-1. On GitHub, open **Releases → Draft a new release**.
-2. Create a tag such as `v0.1.0` or `v0.2.0-rc.1` and select the branch or commit to release.
-3. Select **Publish release**. The **Publish Docker image** workflow builds the tagged revision for `linux/amd64` and `linux/arm64` and pushes a versioned image using GitHub's built-in token. Follow the job under **Actions**.
-
-For a repository named `dropnote`, release `v0.1.0` produces this image. Replace `your-owner` with your GitHub account or organization in lowercase.
+Run this from the repository root to build and run the development variant.
 
 ```sh
-docker pull ghcr.io/your-owner/dropnote:0.1.0
+docker compose -f compose.dev.yaml up -d --build
 ```
 
-For Compose, replace the service's `build: .` line with `image: ghcr.io/your-owner/dropnote:0.1.0`, then run `docker compose pull` and `docker compose up -d`. Update the version tag to upgrade.
+Both Compose files use the same service and volume names. To run the dev variant alongside a production instance, select a separate Compose project with `-p dropnote-dev` and set a different `DROPNOTE_PORT`.
 
-GHCR package visibility is managed under **Packages**. Public images can be pulled anonymously. For a private image, sign in to `ghcr.io` on the deployment machine with a classic personal access token that has `read:packages` and access to the package. See [GitHub Container Registry authentication](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-to-the-container-registry).
-
-Dependabot checks npm dependencies, the Docker base image and workflow actions weekly.
-
-## Running from source
-
-Requires Node.js 24 or newer. The repository includes the browser bundle.
+Requires Node.js 24 or newer. Install development dependencies to build the browser bundle from source.
 
 ```sh
 npm ci
 npm start
 ```
 
-Open <http://localhost:3000>. To load a local `.env` file explicitly, start with `node --env-file=.env src/main.ts`. Run `npm run build` after editing the frontend.
+Open <http://localhost:3000>. `npm start` builds the browser bundle before starting the server. To load a local `.env` file explicitly, run `npm run build && node --env-file=.env src/main.ts`.
+
+### Upgrading from a build with the previous project name
+
+The Compose service is now `dropnote`, the default named volume is `dropnote-data` and the host port setting is `DROPNOTE_PORT`. Update your reverse proxy upstream and the port setting in `.env` if you customized them. Compose creates a new volume by default. To keep existing unencrypted spaces, restore a backup into the new volume or mount the existing volume at `/app/data`.
+
+Browser bookmarks, start-page choices and remembered keys from the previous build need to be set up again. The new build uses new encryption context labels, so encrypted spaces created with the previous build require that build for access. Copy their content and files before upgrading if you want to recreate them in the new build.
 
 ## Using spaces
 
@@ -146,7 +141,7 @@ Stop Dropnote before taking a backup so the index and the files are copied consi
 docker stop dropnote
 mkdir -p backup
 docker run --rm \
-  -v share-tool-data:/data:ro \
+  -v dropnote-data:/data:ro \
   -v "$PWD/backup:/backup" \
   alpine tar -czf /backup/dropnote-data.tar.gz -C /data .
 docker start dropnote
@@ -168,11 +163,11 @@ Keep encrypted spaces' passphrases separately. The volume contains the data need
 
 Dropnote serves HTTP and Live-Sync WebSockets under `/sync/<slug>`. Terminate TLS at your reverse proxy. If you use Authelia, apply its access policy to the entire site, including the API and WebSocket path. With multiuser mode enabled, Dropnote applies account permissions inside the app.
 
-With Caddy and Dropnote on the same Docker network, the Compose service name is `share-tool`. Caddy handles WebSocket upgrades through its standard [reverse proxy directive](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy).
+With Caddy and Dropnote on the same Docker network, the Compose service name is `dropnote`. Caddy handles WebSocket upgrades through its standard [reverse proxy directive](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy).
 
 ```caddyfile
 dropnote.example.com {
-    reverse_proxy share-tool:3000
+    reverse_proxy dropnote:3000
 }
 ```
 
@@ -199,7 +194,7 @@ dropnote.example.com {
             uri /api/authz/forward-auth
             copy_headers Remote-User>X-Forwarded-User
         }
-        reverse_proxy share-tool:3000
+        reverse_proxy dropnote:3000
     }
 }
 ```
@@ -219,7 +214,7 @@ New spaces start private. Use **⋯ → Manage access** to grant or remove permi
 
 ```nginx
 # http { } level — log $uri instead of $request_uri: keeps ?token= out of logs
-log_format share_tool '$remote_addr - $time_local "$request_method $uri" $status';
+log_format dropnote '$remote_addr - $time_local "$request_method $uri" $status';
 
 # server { } level
 location / {
@@ -228,7 +223,7 @@ location / {
     proxy_set_header Upgrade $http_upgrade;      # WebSocket (Live-Sync)
     proxy_set_header Connection "upgrade";
     proxy_read_timeout 1h;                        # keep sync connections open
-    access_log /var/log/nginx/share-tool.log share_tool;
+    access_log /var/log/nginx/dropnote.log dropnote;
 }
 ```
 
@@ -237,13 +232,13 @@ location / {
 ```sh
 npm run typecheck   # tsc --noEmit
 npm run build       # bundle the editor frontend into public/js/editor.bundle.js
-npm test            # node:test — black-box tests against the real server
+npm test            # build the frontend and run the black-box tests
 ```
 
 The test harness starts the real server as a child process (fresh `DATA_DIR`, ephemeral `PORT`) and drives it over HTTP and WebSocket — the server API is the test seam. Live-Sync is verified with headless Yjs clients (`yjs` over `ws`) driving the real server: edits propagate live, concurrent edits merge without losing keystrokes, and the Note persists across a restart.
 
 `test/deployment.test.ts` is the deployment smoke test: it builds the Docker image, boots a container with a temporary data volume, runs the API smoke facts against it (root serves the Default Pad page, JSON 404 shape), verifies the non-root UID and the data-dir ownership contract, asserts that a wrongly-owned directory fails boot with the permission error, and that data in the volume survives container replacement. It skips cleanly when Docker is unavailable; the first run builds the image (minutes), later runs reuse the layer cache.
 
-The editor uses CodeMirror and Yjs, bundled locally with esbuild. Run `npm run build` after frontend changes. The tests check that the committed bundle matches the source.
+The editor uses CodeMirror and Yjs, bundled with esbuild. The generated bundle is excluded from Git. Run `npm run build` to refresh it while the server is running. The Docker image builds and includes its own bundle.
 
 See the [glossary](GLOSSARY.md), the [encryption design](docs/adr/0001-client-side-e2e-zero-knowledge.md) and the [Live-Sync design](docs/adr/0002-yjs-live-sync-encrypted-relay.md).

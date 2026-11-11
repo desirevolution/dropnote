@@ -4,3 +4,5 @@ npm-debug.log*
 .env
 .env.*
 !.env.example
+.scratch/
+/public/js/editor.bundle.js

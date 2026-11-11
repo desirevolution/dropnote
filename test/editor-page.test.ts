@@ -6,12 +6,6 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
-import { mkdtemp, readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { makeTempDataDir, startServer } from "./helpers/server.ts";
 
 test("the Default Pad shows the plain-text editor alongside its files", async () => {
@@ -46,23 +40,4 @@ test("the bundled editor frontend is served as a static asset", async () => {
   } finally {
     await server.stop();
   }
-});
-
-test("the committed editor bundle matches the frontend sources", async () => {
-  const bundleFile = fileURLToPath(new URL("../public/js/editor.bundle.js", import.meta.url));
-  assert.ok(existsSync(bundleFile), "the bundle is committed next to its build script");
-
-  const tempDir = await mkdtemp(path.join(existsSync("/tmp/opencode") ? "/tmp/opencode" : tmpdir(), "bundle-check-"));
-  const rebuilt = path.join(tempDir, "editor.bundle.js");
-  const frontendEntry = fileURLToPath(new URL("../frontend/editor.js", import.meta.url));
-  await build({
-    entryPoints: [frontendEntry],
-    bundle: true,
-    minify: true,
-    format: "esm",
-    outfile: rebuilt,
-  });
-
-  const [committed, fresh] = await Promise.all([readFile(bundleFile), readFile(rebuilt)]);
-  assert.deepEqual(committed, fresh, "the committed bundle is up to date; run `npm run build` after frontend changes");
 });

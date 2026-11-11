@@ -32,9 +32,9 @@ import {
 const execFile = promisify(execFileCallback);
 
 /** The image this suite builds; tagged so unrelated images cannot collide with it. */
-const IMAGE = "share-tool:smoke-test";
+const IMAGE = "dropnote:smoke-test";
 /** Broad label for debris sweeps: every container the suite ever created. */
-const LABEL = "share-tool-smoke-test";
+const LABEL = "dropnote-smoke-test";
 /** Unique per run, so two parallel test runs never fight over a name. */
 const RUN_ID = `${process.pid}-${Date.now().toString(36)}`;
 

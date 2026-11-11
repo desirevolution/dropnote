@@ -1,5 +1,5 @@
 /** Browser-local list of pad addresses and display metadata. */
-export const STORAGE_KEY = "share-tool:my-pads";
+export const STORAGE_KEY = "dropnote:my-pads";
 
 export function listMyPads(storage) {
   let raw;

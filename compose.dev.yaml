@@ -1,0 +1,32 @@
+# Build and run dropnote: `docker compose -f compose.dev.yaml up -d --build`.
+#
+# Configuration lives in .env (template: .env.example): copy it and uncomment
+# what you need — Compose both interpolates this file and forwards every set
+# variable to the container (env_file below), so one file drives everything.
+#
+# Two ports play a role:
+#   PORT            — what the app listens on INSIDE the container (3000 unless
+#                     you override it in .env; the published mapping follows).
+#   DROPNOTE_PORT — the port people reach the site on from the HOST.
+# Share links use the address in the browser.
+
+services:
+  dropnote:
+    build: .
+    ports:
+      - "${DROPNOTE_PORT:-8080}:${PORT:-3000}"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # The URL printed at startup defaults to the published host port.
+      BASE_URL: ${BASE_URL:-http://localhost:${DROPNOTE_PORT:-8080}}
+    volumes:
+      # Named volume: initialized with the container user's ownership
+      # automatically. A host directory works too, but must be owned by
+      # UID 1000 (README, "Data volume and backups").
+      - dropnote-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  dropnote-data:

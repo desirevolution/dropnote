@@ -33,7 +33,7 @@ async function setup(t: TestContext, overrides: NodeJS.ProcessEnv = {}) {
   }
   function socket(space: string, username?: string, options: { token?: string; proof?: string; origin?: string } = {}) {
     const headers = { ...(username ? { "x-forwarded-user": username } : {}), origin: options.origin ?? origin };
-    const protocols = options.proof ? ["share-tool", `proof.${options.proof}`] : ["share-tool"];
+    const protocols = options.proof ? ["dropnote", `proof.${options.proof}`] : ["dropnote"];
     const url = `${base.replace("http:", "ws:")}/sync/${space}${options.token ? `?token=${options.token}` : ""}`;
     const ws = new WebSocket(url, protocols, { headers, handshakeTimeout: 3_000 });
     t.after(() => ws.terminate());

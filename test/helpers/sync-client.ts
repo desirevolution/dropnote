@@ -47,7 +47,7 @@ export class SyncClient {
 
   private constructor(url: string, codec: UpdateCodec | null, proof?: string) {
     this.#codec = codec;
-    this.#socket = new WebSocket(url, proof ? ["share-tool", `proof.${proof}`] : undefined);
+    this.#socket = new WebSocket(url, proof ? ["dropnote", `proof.${proof}`] : undefined);
     this.#socket.on("message", (data: WebSocket.RawData, isBinary: boolean) => {
       if (isBinary) {
         const frame = new Uint8Array(data as Buffer);

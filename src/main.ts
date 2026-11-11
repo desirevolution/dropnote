@@ -3,10 +3,10 @@ import { startServer } from "./server.ts";
 
 const config = loadConfigOrExit();
 const running = await startServer(config).catch((cause) => {
-  console.error(`share-tool: ${cause instanceof Error ? cause.message : String(cause)}`);
+  console.error(`dropnote: ${cause instanceof Error ? cause.message : String(cause)}`);
   process.exit(1);
 });
-console.log(`share-tool listening on port ${running.port} (all interfaces)`);
+console.log(`dropnote listening on port ${running.port} (all interfaces)`);
 console.log(`Share Links build from ${config.baseUrl} (set BASE_URL to change this)`);
 
 let closing = false;
@@ -32,7 +32,7 @@ function loadConfigOrExit(): Config {
   try {
     return loadConfig(process.env);
   } catch (cause) {
-    console.error(`share-tool: ${cause instanceof Error ? cause.message : String(cause)}`);
+    console.error(`dropnote: ${cause instanceof Error ? cause.message : String(cause)}`);
     process.exit(1);
   }
 }

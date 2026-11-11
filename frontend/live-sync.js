@@ -37,7 +37,7 @@ export function startLiveSync(doc, { metadata, key, proof, cursorKey, onState, o
     const url = new URL(`/sync/${encodeURIComponent(metadata.slug)}`, location.href);
     url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
     if (pin) url.searchParams.set("token", pin);
-    const connection = new WebSocket(url, proof ? ["share-tool", `proof.${proof}`] : ["share-tool"]);
+    const connection = new WebSocket(url, proof ? ["dropnote", `proof.${proof}`] : ["dropnote"]);
     socket = connection;
     connection.binaryType = "arraybuffer";
     let incoming = Promise.resolve();

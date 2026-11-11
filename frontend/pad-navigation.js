@@ -1,7 +1,7 @@
 import { spaceLabel } from "../src/space-label.ts";
 import { addMyPad, clearMyPads, listMyPads, removeMyPad } from "./my-pads.js";
 
-const startKey = "share-tool:start-pad";
+const startKey = "dropnote:start-pad";
 const $ = (id) => document.getElementById(id);
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -17,7 +17,7 @@ export function setStorageUser(username) {
 }
 
 export function storageKey(key) {
-  return storageUser ? `share-tool:user:${storageUser}:${key}` : key;
+  return storageUser ? `dropnote:user:${storageUser}:${key}` : key;
 }
 
 export function localValue(key) {

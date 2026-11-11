@@ -26,8 +26,8 @@ const NONCE_BYTES = 12;
 const TAG_BYTES = 16;
 /** The current frame-format version (first byte of every frame). */
 const FRAME_VERSION = 1;
-const HKDF_SALT = "share-tool v1 chunk salt";
-const CHUNK_INFO_PREFIX = "share-tool attachment chunk ";
+const HKDF_SALT = "dropnote v1 chunk salt";
+const CHUNK_INFO_PREFIX = "dropnote attachment chunk ";
 
 /** A wrong Key, corrupted bytes or an unreadable frame: decryption refused. */
 export class DecryptionError extends Error {

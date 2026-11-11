@@ -75,7 +75,7 @@ test("encrypted presence is relayed temporarily and disappears when the sender l
   try {
     const pad = await createEncryptedPad(server.baseUrl, { slug: "presence" });
     async function connect() {
-      const socket = new WebSocket(server.syncUrl(pad.slug), ["share-tool", `proof.${pad.proof}`]);
+      const socket = new WebSocket(server.syncUrl(pad.slug), ["dropnote", `proof.${pad.proof}`]);
       sockets.push(socket);
       const messages: Array<{ type: string; peer?: string; data?: string }> = [];
       socket.on("message", (data, binary) => {

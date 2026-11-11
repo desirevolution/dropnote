@@ -30,7 +30,7 @@ export class SyncRelay {
     this.#config = config;
     this.#wss = new WebSocketServer({
       noServer: true,
-      handleProtocols: (protocols) => protocols.has("share-tool") ? "share-tool" : false,
+      handleProtocols: (protocols) => protocols.has("dropnote") ? "dropnote" : false,
     });
     const heard = new WeakSet<WebSocket>();
     this.#wss.on("connection", (client: WebSocket) => {

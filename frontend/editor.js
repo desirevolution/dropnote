@@ -19,8 +19,8 @@ const syncError = $("sync-error");
 const noteCopy = $("copy-note");
 const fullWidth = $("full-width");
 const encryption = metadata.encryption;
-const unlockKey = encryption ? `share-tool:unlock:${encryption.salt}` : null;
-const lockEvent = encryption ? `share-tool:lock:${encryption.salt}` : null;
+const unlockKey = encryption ? `dropnote:unlock:${encryption.salt}` : null;
+const lockEvent = encryption ? `dropnote:lock:${encryption.salt}` : null;
 const padUrl = new URL(metadata.path, location.origin).href;
 const api = `/api/pads/${encodeURIComponent(metadata.slug)}`;
 
@@ -143,9 +143,9 @@ function onMissing() {
   if (unlockKey) saveLocal(unlockKey, null);
   closeWorkspace();
   // Let the home route remove an unavailable personal start pad and show its fallback notice.
-  if (localValue("share-tool:start-pad")) {
+  if (localValue("dropnote:start-pad")) {
     try {
-      const chosen = JSON.parse(localValue("share-tool:start-pad"));
+      const chosen = JSON.parse(localValue("dropnote:start-pad"));
       if (chosen.slug === metadata.slug && chosen.createdAt === metadata.createdAt) {
         location.replace("/");
         return;

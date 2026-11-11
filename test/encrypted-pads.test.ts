@@ -18,7 +18,7 @@ import { createUpdateCodec } from "../frontend/encrypted-sync.js";
 
 /** A passive WebSocket in the Pad's room that records the raw relayed bytes. */
 async function eavesdropOn(server: { syncUrl(slug: string): string }, slug: string, proof: string): Promise<{ frames(): Buffer[]; close(): Promise<void> }> {
-  const socket = new WebSocket(server.syncUrl(slug), ["share-tool", `proof.${proof}`]);
+  const socket = new WebSocket(server.syncUrl(slug), ["dropnote", `proof.${proof}`]);
   const wire: Buffer[] = [];
   socket.on("message", (data: Buffer, isBinary: boolean) => {
     if (isBinary) wire.push(Buffer.from(data));
