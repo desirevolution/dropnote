@@ -1,4 +1,3 @@
-
 name: Publish Docker image
 
 on:
@@ -18,36 +17,21 @@ jobs:
         shell: bash
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
-          IS_PRERELEASE: ${{ github.event.release.prerelease }}
         run: |
           version_pattern='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
           version="${RELEASE_TAG#v}"
-
           if [[ ! "$RELEASE_TAG" =~ $version_pattern || ${#version} -gt 128 ]]; then
             echo '::error::Use a release tag such as v0.1.0 or v0.2.0-rc.1.'
             exit 1
           fi
-
-          image="ghcr.io/${GITHUB_REPOSITORY,,}"
-
           {
-            printf 'image=%s\n' "$image"
+            printf 'image=ghcr.io/%s\n' "${GITHUB_REPOSITORY,,}"
             printf 'version=%s\n' "$version"
-            printf 'tags<<EOF\n'
-            printf '%s:%s\n' "$image" "$version"
-
-            # Only stable releases receive the latest tag.
-            if [[ "$IS_PRERELEASE" != "true" && "$version" != *-* ]]; then
-              printf '%s:latest\n' "$image"
-            fi
-
-            printf 'EOF\n'
           } >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-          ref: ${{ github.event.release.tag_name }}
 
       - uses: docker/setup-qemu-action@v4
         with:
@@ -68,7 +52,7 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.release.outputs.tags }}
+          tags: ${{ steps.release.outputs.image }}:${{ steps.release.outputs.version }}
           labels: |
             org.opencontainers.image.title=Dropnote
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
