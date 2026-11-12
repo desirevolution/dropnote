@@ -71,27 +71,36 @@ export const PAD_CSS = `
   #sync-status[data-state="live"] { color: var(--positive); }
   #sync-status[data-state="error"] { color: var(--error); }
 
-  .files-body { padding: .65rem 1rem; }
+  .files-body { padding: clamp(.75rem, 2.5vw, 1.5rem); }
   .drop-zone {
-    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .45rem .75rem;
-    padding: .5rem .65rem; border: 1px dashed var(--border-strong); border-radius: .25rem;
+    width: 100%; min-height: clamp(8rem, 20vh, 11rem); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: .25rem; padding: 1rem; margin-bottom: 1.25rem;
+    border: 1px dashed var(--border-strong); border-radius: .45rem; background: var(--panel);
   }
-  .drop-zone.is-dragging { border-color: var(--accent); background: var(--accent-soft); }
-  .drop-zone p, .files-empty { color: var(--muted); font-size: .85rem; }
-  .files-empty { padding: .65rem 0 .25rem; }
+  .drop-zone svg { width: 1.4rem; height: 1.4rem; color: var(--accent); margin-bottom: .25rem; }
+  .drop-zone-title { font-size: 1rem; }
+  .drop-zone-hint, .files-empty { color: var(--muted); font-size: .875rem; font-weight: 400; }
+  .drop-zone:hover:not(:disabled), .drop-zone.is-dragging { border-color: var(--accent); background: var(--accent-soft); }
+  .drop-zone.is-dragging { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .files-empty { padding: .5rem 0; text-align: center; }
   #attachments, #attachment-uploads, #my-pads-list, .account-list { list-style: none; margin: 0; padding: 0; }
-  #attachments li, #attachment-uploads li {
-    display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center;
+  #attachments { display: grid; gap: .65rem; }
+  #attachments li {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+    gap: .75rem 1rem; min-height: 5.5rem; padding: .85rem 1rem; border: 1px solid var(--border); border-radius: .375rem;
+  }
+  #attachment-uploads li {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(2.5rem, 4rem) auto; align-items: center;
     gap: .3rem; padding: .6rem .1rem; border-bottom: 1px solid var(--border);
   }
-  #attachments li:last-child { border-bottom: 0; padding-bottom: .1rem; }
-  #attachment-uploads li { grid-template-columns: minmax(0, 1fr) minmax(2.5rem, 4rem) auto; }
   .file-info { min-width: 0; }
-  .attachment-name { display: block; font-size: .9rem; font-weight: 600; overflow-wrap: anywhere; }
-  .attachment-size { display: block; color: var(--muted); font-size: .78rem; white-space: nowrap; }
+  .attachment-name { display: block; font-weight: 600; overflow-wrap: anywhere; }
+  .attachment-size { display: block; color: var(--muted); font-size: .85rem; overflow-wrap: anywhere; }
+  .file-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .4rem; }
   #attachment-uploads:not(:empty) { margin-bottom: .65rem; }
   #attachment-uploads progress { width: 100%; accent-color: var(--accent); }
-  .file-action { min-height: 2.5rem; padding-inline: .55rem; font-size: .8rem; }
+  .file-action { min-height: 2.75rem; padding-inline: .8rem; }
+  .file-download { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
   .file-remove:hover:not(:disabled) { color: var(--error); }
   .attachment-error, .form-error, #sync-error { color: var(--error); font-size: .875rem; margin-top: .6rem; overflow-wrap: anywhere; }
   #sync-error { margin: 0 0 1rem; }
@@ -151,10 +160,10 @@ export const PAD_CSS = `
   #full-image { display: block; width: 100%; max-height: 67dvh; object-fit: contain; }
   #image-copy-status { align-self: center; margin-inline-end: auto; }
   #image-copy-status:empty { display: none; }
-  .with-thumbnail { display: flex; align-items: center; gap: .55rem; }
+  .with-thumbnail { display: flex; align-items: center; gap: .85rem; }
   .file-description { min-width: 0; }
-  .thumbnail-button { flex: none; padding: 0; width: 2.65rem; height: 2.65rem; overflow: hidden; }
-  .thumbnail-button img { width: 100%; height: 100%; object-fit: cover; }
+  .thumbnail-button { flex: none; padding: .2rem; width: 4.5rem; height: 3.75rem; overflow: hidden; background: var(--panel); }
+  .thumbnail-button img { width: 100%; height: 100%; object-fit: contain; }
   .transfer-error { color: var(--error); font-size: .78rem; overflow-wrap: anywhere; }
   #attachment-uploads li.transfer-failed { grid-template-columns: minmax(0, 1fr) auto auto; }
   .my-pad-detail { display: block; color: var(--muted); font-size: .8rem; }
@@ -165,10 +174,13 @@ export const PAD_CSS = `
     main { padding-top: 1.25rem; }
     #note .cm-editor { height: clamp(13rem, 42vh, 27rem); }
   }
+  @media (max-width: 34rem) {
+    #attachments li { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (pointer: coarse) {
+    .drop-zone-hint { display: none; }
+  }
   @media (max-width: 26rem) {
-    #attachments li { grid-template-columns: minmax(0, 1fr) auto auto; }
-    #attachments .file-info { grid-column: 1 / -1; }
-    #attachments .file-action:nth-child(2) { grid-column: 2; }
     .topbar-inner { flex-wrap: wrap; padding-block: .6rem; }
     .topbar-inner .actions { margin-inline-start: auto; }
     .topbar .actions { gap: .15rem; }

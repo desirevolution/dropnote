@@ -183,11 +183,11 @@ ${PAD_CSS}
         <div class="actions" id="note-tools">
           <span id="note-copy-status" role="status"></span>
           <button type="button" class="quiet" id="copy-note" disabled>${icon("copy")} Copy text</button>
+          <button type="button" id="choose-files" disabled>${icon("plus")} Add files</button>
         </div>
         <div id="files-tools">
           <button type="button" id="copy-files-link" class="quiet">${icon("link")} Copy files link</button>
         </div>
-        <button type="button" id="choose-files" disabled>${icon("plus")} Add files</button>
       </div>
       <input type="file" id="attachment-input" multiple disabled hidden aria-label="Files to attach">
     </div>
@@ -203,7 +203,11 @@ ${PAD_CSS}
     </section>
     <section class="card files-pane" id="files-card" role="tabpanel" aria-labelledby="files-tab" tabindex="0" hidden>
       <div class="files-body">
-        <div class="drop-zone" id="file-drop" hidden><p>Drop files or paste an image</p></div>
+        <button type="button" class="drop-zone" id="file-drop" hidden disabled>
+          ${icon("plus")}
+          <span class="drop-zone-title">Choose files</span>
+          <span class="drop-zone-hint">Or drop files here</span>
+        </button>
         <ul id="attachments" aria-label="Uploaded files"></ul>
         <p class="files-empty" id="files-empty" hidden>No files yet.</p>
       </div>

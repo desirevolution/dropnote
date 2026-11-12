@@ -59,7 +59,9 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
   render();
   void sweepStaleTemps();
 
-  choose.addEventListener("click", () => input.click(), { signal });
+  for (const button of [choose, dropZone]) {
+    button.addEventListener("click", () => input.click(), { signal });
+  }
   input.addEventListener("change", () => {
     uploadFiles(input.files);
     input.value = "";
@@ -203,9 +205,12 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
       action.download = entry.name;
       action.textContent = "Download";
     }
-    action.className = "file-action";
+    action.className = "file-action file-download";
     action.setAttribute("aria-label", `Download ${entry.name}`);
-    row.append(info, action);
+    const actions = document.createElement("div");
+    actions.className = "file-actions";
+    actions.append(action);
+    row.append(info, actions);
     if (canEdit) {
       const remove = button("Remove", async () => {
         if (!canEdit || !window.confirm(`Remove “${entry.name}” from this pad?`)) return;
@@ -221,7 +226,7 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
       });
       remove.className = "file-action quiet file-remove";
       remove.setAttribute("aria-label", `Remove ${entry.name}`);
-      row.append(remove);
+      actions.append(remove);
     }
     return row;
   }
@@ -366,7 +371,7 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
     setEditing(enabled) {
       if (enabled === canEdit) return;
       canEdit = enabled;
-      input.disabled = choose.disabled = !enabled;
+      input.disabled = choose.disabled = dropZone.disabled = !enabled;
       dropZone.hidden = !enabled;
       for (const retry of uploadArea.querySelectorAll(".retry-upload")) retry.disabled = !enabled;
       resetDrag();
