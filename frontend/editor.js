@@ -7,6 +7,7 @@ import { initNoteEditor } from "./note-editor.js";
 import { startLiveSync } from "./live-sync.js";
 import { initPinUnlock } from "./pin.js";
 import { copyText, initPadActions, ttlChoice } from "./pad-actions.js";
+import { initWorkspaceTabs } from "./workspace-tabs.js";
 import { initSpaceAccess } from "./space-access.js";
 import { dateLabel, forgetPad, initPadNavigation, localValue, notice, openPersonalStartPad, saveLocal, setStorageUser, storageKey } from "./pad-navigation.js";
 
@@ -17,11 +18,15 @@ const workspace = $("workspace");
 const syncStatus = $("sync-status");
 const syncError = $("sync-error");
 const noteCopy = $("copy-note");
-const fullWidth = $("full-width");
+const uploadNotice = $("upload-notice");
+const uploadNoticeText = $("upload-notice-text");
+const showUpload = $("show-upload");
 const encryption = metadata.encryption;
 const unlockKey = encryption ? `dropnote:unlock:${encryption.salt}` : null;
 const lockEvent = encryption ? `dropnote:lock:${encryption.salt}` : null;
 const padUrl = new URL(metadata.path, location.origin).href;
+const filesUrl = new URL(padUrl);
+filesUrl.searchParams.set("view", "files");
 const api = `/api/pads/${encodeURIComponent(metadata.slug)}`;
 
 let doc;
@@ -40,6 +45,18 @@ let fileCount = 0;
 let clearing = false;
 let managing = false;
 let lockChannel;
+let uploadNoticeTimer;
+
+const tabs = initWorkspaceTabs({
+  filesLink: new URLSearchParams(location.search).get("view") === "files",
+  beforeChange(previous) {
+    if (previous === "note") note?.saveScrollPosition();
+  },
+  afterChange(view) {
+    if (view === "note") note?.restoreScrollPosition();
+    else hideUploadNotice();
+  },
+});
 
 setStorageUser(metadata.username);
 initPadActions(metadata.username);
@@ -47,6 +64,8 @@ if (metadata.username) initSpaceAccess(api);
 const navigation = initPadNavigation(metadata);
 
 $("copy-link").addEventListener("click", () => copyText(padUrl, $("copy-status"), "Link copied."));
+$("copy-files-link").addEventListener("click", () => copyText(filesUrl.href, $("copy-status"), "Files link copied."));
+showUpload.addEventListener("click", () => tabs.showFiles());
 $("show-pad-qr").addEventListener("click", async () => {
   const canvas = $("pad-qr");
   const error = $("pad-qr-error");
@@ -61,11 +80,21 @@ $("show-pad-qr").addEventListener("click", async () => {
 $("pad-qr-link").href = padUrl;
 $("pad-qr-link").textContent = padUrl;
 noteCopy.addEventListener("click", () => copyText(noteText, $("note-copy-status"), "Text copied."));
-fullWidth.addEventListener("click", () => {
-  const expanded = workspace.classList.toggle("is-wide");
-  fullWidth.setAttribute("aria-pressed", String(expanded));
-});
-$("go-to-files").addEventListener("click", () => $("files-title").focus());
+function hideUploadNotice() {
+  clearTimeout(uploadNoticeTimer);
+  uploadNotice.hidden = true;
+  uploadNoticeText.textContent = "";
+}
+
+function showUploadNotice() {
+  if (tabs.selected !== "note") return;
+  clearTimeout(uploadNoticeTimer);
+  uploadNotice.hidden = false;
+  uploadNoticeText.textContent = "File added.";
+  uploadNoticeTimer = setTimeout(() => {
+    if (document.activeElement !== showUpload) hideUploadNotice();
+  }, 8_000);
+}
 
 function writeHeaders() {
   const headers = {};
@@ -105,7 +134,10 @@ function setState(state) {
     writeToken = null;
   }
   const active = writable || state === "readonly";
-  if (active) workspace.hidden = false;
+  if (active) {
+    workspace.hidden = false;
+    tabs.showInitial(noteText, fileCount);
+  }
   connectionState = state;
   updateSyncStatus();
   $("unlock-editing").hidden = state !== "readonly" || !metadata.pinProtected || metadata.canEdit === false;
@@ -183,8 +215,10 @@ async function openPad(key = null) {
   attachments = initAttachments(doc, metadata.slug, {
     key,
     writeHeaders,
+    onUploaded: showUploadNotice,
     onCount(count) {
       fileCount = count;
+      tabs.setFileCount(count);
       updateActions();
     },
   });
@@ -214,6 +248,8 @@ function closeWorkspace() {
   sync = note = attachments = doc = undefined;
   noteText = "";
   fileCount = 0;
+  tabs.setFileCount(0);
+  hideUploadNotice();
   proof = writeToken = null;
   for (const id of ["pin-dialog", "ttl-dialog"]) {
     if ($(id).open) $(id).close();

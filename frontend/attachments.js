@@ -41,7 +41,7 @@ const choose = $("choose-files");
 const previewTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp", "image/x-icon"]);
 const imageExtensions = new Map([["image/jpeg", "jpg"], ["image/png", "png"], ["image/gif", "gif"], ["image/webp", "webp"], ["image/avif", "avif"], ["image/bmp", "bmp"], ["image/svg+xml", "svg"]]);
 
-export function initAttachments(ydoc, slug, { key, writeHeaders, onCount }) {
+export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUploaded }) {
   const attachments = ydoc.getArray(ATTACHMENTS_TYPE);
   const activeTransfers = new AbortController();
   const { signal } = activeTransfers;
@@ -156,11 +156,8 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount }) {
   function render() {
     const entries = attachments.toArray().filter((entry) =>
       entry && typeof entry.name === "string" && /^[0-9a-f]{32}$/.test(entry.blobId));
-    $("files-count").textContent = String(entries.length);
-    $("files-count").setAttribute("aria-label", `${entries.length} uploaded files`);
-    $("go-to-files").textContent = `Files (${entries.length})`;
     $("files-empty").hidden = entries.length !== 0;
-    entries.sort((left, right) => String(right.addedAt ?? "").localeCompare(String(left.addedAt ?? "")));
+    entries.reverse().sort((left, right) => String(right.addedAt ?? "").localeCompare(String(left.addedAt ?? "")));
     list.replaceChildren(...entries.map(rowFor));
     onCount(entries.length);
   }
@@ -258,6 +255,7 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount }) {
         }]);
       }
       row.remove();
+      onUploaded();
     } catch (error) {
       if (signal.aborted) return;
       row.classList.add("transfer-failed");
@@ -396,6 +394,7 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount }) {
       if (imageDialog.open) imageDialog.close();
       uploadArea.replaceChildren();
       list.replaceChildren();
+      showError(null);
     },
   };
 }

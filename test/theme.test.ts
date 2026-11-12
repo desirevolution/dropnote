@@ -72,7 +72,7 @@ test("the pages degrade sanely to narrow screens (Story 36)", async () => {
     }
     const body = await (await fetch(`${server.baseUrl}/`)).text();
     const style = /<style>([\s\S]*?)<\/style>/.exec(body)?.[1] ?? "";
-    assert.match(style, /@media \(max-width: 46rem\)[\s\S]*?\.workspace \{ grid-template-columns: minmax\(0, 1fr\)/, "the editor and file list stack on narrow screens");
+    assert.match(style, /\.workspace-toolbar, \.workspace-tabs,[^{]*\{[^}]*flex-wrap: wrap/, "workspace controls wrap on narrow screens");
     assert.match(style, /#one-time-link\s*{[^}]*min\(40rem, calc\(100vw - 2rem\)\)/, "the disclosure dialog fits narrow viewports");
   } finally {
     await server.stop();

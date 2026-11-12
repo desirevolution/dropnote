@@ -115,7 +115,16 @@ export function initNoteEditor(note, { onText, onCursor }) {
   document.addEventListener("visibilitychange", queueCursor);
   window.addEventListener("blur", queueCursor);
 
+  let scrollPosition;
   return {
+    saveScrollPosition() {
+      scrollPosition = [editor.scrollDOM.scrollLeft, editor.scrollDOM.scrollTop];
+    },
+    restoreScrollPosition() {
+      if (!scrollPosition) return;
+      editor.scrollDOM.scrollTo(...scrollPosition);
+      editor.requestMeasure();
+    },
     setEditing(enabled) {
       if (writable === enabled) return;
       writable = enabled;

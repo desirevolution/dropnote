@@ -16,6 +16,12 @@ test("the Default Pad shows the plain-text editor alongside its files", async ()
     const body = await response.text();
 
     assert.match(body, /<div id="note"><\/div>/, "the editor has an empty mount point");
+    assert.match(body, /role="tablist"/, "note and files have a shared tab list");
+    assert.match(body, /id="note-tab"[^>]*role="tab"[^>]*aria-controls="note-panel"/);
+    assert.match(body, /id="files-tab"[^>]*role="tab"[^>]*aria-controls="files-card"/);
+    assert.match(body, /id="attachment-uploads"[\s\S]*id="note-panel"[^>]*role="tabpanel"[\s\S]*id="files-card"[^>]*role="tabpanel"/,
+      "transfer progress is outside both panels");
+    assert.doesNotMatch(body, /id="full-width"/, "the note tab already uses the available width");
     assert.doesNotMatch(body, /id="preview"/, "the Note has no rendered preview");
     assert.match(body, /<button[^>]*id="choose-files"/, "the file picker has a keyboard-accessible trigger");
     assert.match(body, /<p[^>]*id="sync-error"[^>]*role="alert"/, "sync errors are announced separately from the editor");

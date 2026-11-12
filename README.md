@@ -40,7 +40,7 @@ Push the project to [desirevolution/dropnote](https://github.com/desirevolution/
 2. Create a tag such as `v0.1.0` or `v0.2.0-rc.1` and select the branch or commit to release.
 3. Select **Publish release**. The **Publish Docker image** workflow builds the tagged revision for `linux/amd64` and `linux/arm64` and pushes a versioned image using GitHub's built-in token. Follow the job under **Actions**.
 
-Release `v0.1.0` publishes `ghcr.io/desirevolution/dropnote:0.1.0`.
+Release `v0.1.0` publishes `ghcr.io/desirevolution/dropnote:0.1.0`. If GitHub reports it as the latest stable release, the workflow also points `:latest` at the same multi-platform image. Prereleases and older releases publish only their version tag. To follow the stable release automatically with Compose, set `DROPNOTE_VERSION=latest` in `.env` and pull before restarting.
 
 GHCR package visibility is managed under **Packages**. Public images can be pulled anonymously. For a private image, sign in to `ghcr.io` on the deployment machine with a classic personal access token that has `read:packages` and access to the package. See [GitHub Container Registry authentication](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-to-the-container-registry).
 
@@ -72,8 +72,8 @@ Browser bookmarks, start-page choices and remembered keys from the previous buil
 | Create a space | **New space** offers encryption and expiry. **More options** has the optional name and editing PIN. A generated address looks like `/p/amber-otter`. |
 | Return to a space | **Saved spaces** shows bookmarks. In single-user mode it also lists spaces created in this browser until they are deleted or expire. In multiuser mode, **My spaces** lists the spaces you own across devices. |
 | Share a link | Use **Copy link** or **QR code**. In multiuser mode, grant access under **⋯ → Manage access** or let the recipient request it when opening the link. Give recipients the passphrase separately for encrypted spaces. |
-| Edit or copy the note | Use the live plain-text editor and **Copy text**. **Full width** moves the file list below the editor until you toggle it back. |
-| Share a screenshot or file | Add files, drag and drop, or paste an image. Open an image preview and choose **Copy image** to copy the full-resolution image as PNG. Clipboard access depends on browser support and permission. |
+| Edit or copy the note | Use the full-width **Note** tab and **Copy text**. Spaces containing only files open the **Files** tab. |
+| Share a screenshot or file | Use **Add files** in either tab, drop files into the Files tab, or paste an image. Transfers and retries are visible in both tabs. The file list shows the newest uploads first. Use **Copy files link** to open the Files tab directly. Open an image preview and choose **Copy image** to copy the full-resolution image as PNG. Clipboard access depends on browser support and permission. |
 | Clear the shared workspace | **⋯ → Clear note** and **⋯ → Remove all files** are separate confirmed actions. |
 | Manage an additional space | **⋯ → Change expiry** and **⋯ → Delete space** require write access. In multiuser mode these actions are available to the owner. The default expiry is seven days unless configured otherwise. |
 

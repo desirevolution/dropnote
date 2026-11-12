@@ -175,7 +175,8 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
       const pad = store.getLivePad(slug);
       if (pad?.owner && !padRole(pad, username)) store.requestPadAccess(pad, username);
       // Give the same response for missing, private and already accessible spaces.
-      res.redirect(303, `${config.padPath}/${encodeURIComponent(slug)}?access=requested`);
+      const filesView = req.query.view === "files" ? "&view=files" : "";
+      res.redirect(303, `${config.padPath}/${encodeURIComponent(slug)}?access=requested${filesView}`);
     });
 
     const accessState = (pad: PadRecord) => ({ grants: pad.grants ?? [], requests: pad.accessRequests ?? [] });
@@ -319,10 +320,11 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
   const padPage: RequestHandler = (req, res) => {
     const slug = req.params.slug as string;
     const pad = getPadOrAnswer404(store, slug, res, (page) => {
+      const filesView = req.query.view === "files" ? "?view=files" : "";
       const access = requestUsername(page) ? {
-        action: `/api/pads/${encodeURIComponent(slug)}/access-requests`,
+        action: `/api/pads/${encodeURIComponent(slug)}/access-requests${filesView}`,
         requested: req.query.access === "requested",
-        spacePath: `${config.padPath}/${encodeURIComponent(slug)}`,
+        spacePath: `${config.padPath}/${encodeURIComponent(slug)}${filesView}`,
       } : undefined;
       page.status(404).type("html").send(renderNotFoundPage(access));
     });

@@ -34,7 +34,6 @@ export const PAD_CSS = `
   }
 
   main { padding-block: 1.5rem 2rem; }
-  main:has(.workspace.is-wide) { width: calc(100% - 4rem); }
   .pad-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .75rem 1rem; margin-bottom: 1.35rem; }
   .pad-head.compact { margin-bottom: .85rem; }
   .pad-head.compact .pad-meta { margin-top: 0; }
@@ -48,19 +47,13 @@ export const PAD_CSS = `
   .pad-mode.encrypted { color: var(--accent); font-weight: 650; }
   #expires-at { border-inline-start: 1px solid var(--border); padding-inline-start: .75rem; }
 
-  .workspace { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(18rem, 1fr); align-items: start; gap: 1rem; }
-  .workspace.is-wide { grid-template-columns: minmax(0, 1fr); }
+  .workspace-toolbar, .workspace-tabs, .transfer-notice { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .6rem; }
+  .workspace-toolbar { justify-content: space-between; margin-bottom: .75rem; }
+  .workspace-actions { gap: .25rem; }
+  .workspace-tabs [role="tab"][aria-selected="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .transfer-notice { justify-content: space-between; padding: .25rem .6rem; margin-bottom: .65rem; background: var(--panel); border-radius: .25rem; font-size: .875rem; }
   .card, .access-panel { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: .375rem; }
-  .card-head { min-height: 3rem; display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding: .55rem 1rem; border-bottom: 1px solid var(--border); }
-  .card-head h2 { display: flex; align-items: center; gap: .5rem; }
-  .card-head h2 svg { color: var(--muted); }
   .note-card { overflow: hidden; }
-  .note-actions { justify-content: flex-end; gap: .15rem; }
-  #full-width[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
-  .files-pane { min-width: 0; border-inline-start: 1px solid var(--border); padding-inline-start: 1rem; }
-  .files-pane .card-head { padding-inline: 0; }
-  .workspace.is-wide .files-pane { border-inline-start: 0; padding-inline-start: 0; }
-  .workspace.is-wide .files-jump { display: inline-flex; }
   #note .cm-editor { height: clamp(22rem, 64vh, 52rem); background: var(--surface); }
   #note .cm-scroller { font: .96rem/1.65 ui-monospace, "DejaVu Sans Mono", monospace; }
   #note .cm-content { padding: 1rem 1.1rem; caret-color: var(--fg); }
@@ -70,23 +63,21 @@ export const PAD_CSS = `
   .remote-cursor { display: inline; position: relative; border-left: 2px solid var(--cursor); margin-inline: -1px; pointer-events: none; }
   .remote-cursor-name { position: absolute; z-index: 1; inset-block-end: 100%; inset-inline-start: -2px; max-inline-size: 10rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--surface); color: var(--fg); border: 1px solid var(--cursor); border-radius: 3px; padding: 0 .25rem; font: 600 .7rem/1.2 system-ui, sans-serif; }
   .remote-cursor::before { content: ""; position: absolute; top: -.1em; left: -2px; width: 5px; height: 4px; background: var(--cursor); border-radius: 1px; }
-  .note-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .3rem 1rem; min-height: 2.65rem; align-items: center; border-top: 1px solid var(--border); padding: .45rem 1rem; color: var(--muted); font-size: .8rem; }
+  .workspace-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .3rem 1rem; min-height: 2.65rem; align-items: center; padding: .45rem 0; color: var(--muted); font-size: .8rem; }
   #note-copy-status:empty { display: none; }
-  #note-copy-status { margin-inline-start: auto; }
+  #note-copy-status { color: var(--muted); font-size: .8rem; }
   #sync-status { display: inline-flex; align-items: center; gap: .45rem; }
   #sync-status::before { content: ""; width: .48rem; height: .48rem; border-radius: 50%; background: currentColor; }
   #sync-status[data-state="live"] { color: var(--positive); }
   #sync-status[data-state="error"] { color: var(--error); }
-  .files-jump { display: none; }
 
-  .files-body { padding-block: .65rem; }
+  .files-body { padding: .65rem 1rem; }
   .drop-zone {
     display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .45rem .75rem;
     padding: .5rem .65rem; border: 1px dashed var(--border-strong); border-radius: .25rem;
   }
   .drop-zone.is-dragging { border-color: var(--accent); background: var(--accent-soft); }
-  .drop-zone p, .files-empty, .files-count { color: var(--muted); font-size: .85rem; }
-  .files-count { font-weight: 500; }
+  .drop-zone p, .files-empty { color: var(--muted); font-size: .85rem; }
   .files-empty { padding: .65rem 0 .25rem; }
   #attachments, #attachment-uploads, #my-pads-list, .account-list { list-style: none; margin: 0; padding: 0; }
   #attachments li, #attachment-uploads li {
@@ -98,6 +89,7 @@ export const PAD_CSS = `
   .file-info { min-width: 0; }
   .attachment-name { display: block; font-size: .9rem; font-weight: 600; overflow-wrap: anywhere; }
   .attachment-size { display: block; color: var(--muted); font-size: .78rem; white-space: nowrap; }
+  #attachment-uploads:not(:empty) { margin-bottom: .65rem; }
   #attachment-uploads progress { width: 100%; accent-color: var(--accent); }
   .file-action { min-height: 2.5rem; padding-inline: .55rem; font-size: .8rem; }
   .file-remove:hover:not(:disabled) { color: var(--error); }
@@ -171,11 +163,7 @@ export const PAD_CSS = `
   @media (max-width: 46rem) {
     .topbar-inner, main { width: calc(100% - 2rem); }
     main { padding-top: 1.25rem; }
-    main:has(.workspace.is-wide) { width: calc(100% - 1rem); }
-    .workspace { grid-template-columns: minmax(0, 1fr); }
-    .files-pane { border-inline-start: 0; padding-inline-start: 0; }
     #note .cm-editor { height: clamp(13rem, 42vh, 27rem); }
-    .files-jump { display: inline-flex; min-height: 2rem; padding-block: .15rem; }
   }
   @media (max-width: 26rem) {
     #attachments li { grid-template-columns: minmax(0, 1fr) auto auto; }

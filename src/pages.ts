@@ -174,39 +174,44 @@ ${PAD_CSS}
   <p id="pad-notice" class="pad-notice" role="status" hidden></p>
   <p id="sync-error" role="alert" hidden></p>
   <div class="workspace" id="workspace"${isEncrypted ? " hidden" : ""}>
-    <section class="card note-card" aria-labelledby="note-title">
-      <header class="card-head">
-        <h2 id="note-title">${icon("note")} Note</h2>
-        <div class="actions note-actions">
+    <div class="workspace-toolbar" id="workspace-toolbar" hidden>
+      <div class="workspace-tabs" role="tablist" aria-label="Space content">
+        <button type="button" id="note-tab" role="tab" aria-controls="note-panel" aria-selected="true">Note</button>
+        <button type="button" id="files-tab" role="tab" aria-controls="files-card" aria-selected="false" tabindex="-1">Files (0)</button>
+      </div>
+      <div class="actions workspace-actions">
+        <div class="actions" id="note-tools">
+          <span id="note-copy-status" role="status"></span>
           <button type="button" class="quiet" id="copy-note" disabled>${icon("copy")} Copy text</button>
-          <button type="button" class="quiet" id="full-width" aria-pressed="false" aria-controls="workspace">Full width</button>
         </div>
-      </header>
+        <div id="files-tools">
+          <button type="button" id="copy-files-link" class="quiet">${icon("link")} Copy files link</button>
+        </div>
+        <button type="button" id="choose-files" disabled>${icon("plus")} Add files</button>
+      </div>
+      <input type="file" id="attachment-input" multiple disabled hidden aria-label="Files to attach">
+    </div>
+    <div class="transfer-notice" id="upload-notice" hidden>
+      <span role="status" id="upload-notice-text"></span>
+      <button type="button" class="quiet" id="show-upload">Show files</button>
+    </div>
+    <p id="attachment-error" class="attachment-error" role="alert" hidden></p>
+    <ul id="attachment-uploads" aria-label="Transfers"></ul>
+    <section class="card note-card" id="note-panel" role="tabpanel" aria-labelledby="note-tab" hidden>
+      <h2 id="note-title" class="visually-hidden">Note</h2>
       <div id="note"></div>
-      <footer class="note-footer">
-        <span id="sync-status" role="status">Connecting…</span>
-        <button type="button" id="unlock-editing" class="quiet" data-open-dialog="pin-dialog" hidden>Unlock editing</button>
-        <span id="note-copy-status" role="status"></span>
-        <button type="button" class="files-jump quiet" id="go-to-files">Files (0)</button>
-      </footer>
     </section>
-    <section class="files-pane" id="files-card" aria-labelledby="files-title" tabindex="0">
-      <header class="card-head">
-        <h2 id="files-title" tabindex="-1">${icon("files")} Files</h2>
-        <span class="files-count" id="files-count"></span>
-      </header>
+    <section class="card files-pane" id="files-card" role="tabpanel" aria-labelledby="files-tab" tabindex="0" hidden>
       <div class="files-body">
-        <div class="drop-zone" id="file-drop" hidden>
-          <p id="drop-hint">Drop files or paste an image</p>
-          <button type="button" id="choose-files" disabled>Add files</button>
-          <input type="file" id="attachment-input" multiple disabled hidden aria-label="Files to attach">
-        </div>
-        <p id="attachment-error" class="attachment-error" role="alert" hidden></p>
-        <ul id="attachment-uploads" aria-label="Transfers"></ul>
+        <div class="drop-zone" id="file-drop" hidden><p>Drop files or paste an image</p></div>
         <ul id="attachments" aria-label="Uploaded files"></ul>
         <p class="files-empty" id="files-empty" hidden>No files yet.</p>
       </div>
     </section>
+    <footer class="workspace-footer">
+      <span id="sync-status" role="status">Connecting…</span>
+      <button type="button" id="unlock-editing" class="quiet" data-open-dialog="pin-dialog" hidden>Unlock editing</button>
+    </footer>
   </div>
 
   <dialog id="new-pad-dialog" aria-labelledby="new-pad-title">
