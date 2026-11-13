@@ -207,6 +207,12 @@ export const PAD_CSS = `
     #note-view .menu-items { max-width: 100%; }
     #attachments li { grid-template-columns: minmax(0, 1fr); }
   }
+  @media (pointer: fine) {
+    body { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
+    main, .workspace { display: flex; flex: 1 0 auto; flex-direction: column; }
+    .note-card, #note { display: flex; flex: 1 1 auto; flex-direction: column; }
+    #note .cm-editor { flex: 1 1 auto; height: auto; min-height: 13rem; contain: size; }
+  }
   @media (pointer: coarse) {
     .drop-zone-hint { display: none; }
   }
