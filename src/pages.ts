@@ -233,7 +233,6 @@ ${PAD_CSS}
               <label class="checkbox-field"><input type="checkbox" id="line-numbers"> ${t("Line numbers")}</label>
             </div>
           </details>
-          <span id="note-copy-status" role="status"></span>
           <button type="button" id="choose-files" disabled>${icon("plus")} ${t("Add files")}</button>
         </div>
         <div id="files-tools">
@@ -249,7 +248,7 @@ ${PAD_CSS}
     <p id="attachment-error" class="attachment-error" role="alert" hidden></p>
     <ul id="attachment-uploads" aria-label="${t("Transfers")}"></ul>
     <section class="card note-card" id="note-panel" role="tabpanel" aria-labelledby="note-tab" hidden>
-      <p id="note-paste-status" role="status"></p>
+      <p id="note-clipboard-status" role="status"></p>
       <h2 id="note-title" class="visually-hidden">${t("Note")}</h2>
       <div id="note"></div>
     </section>

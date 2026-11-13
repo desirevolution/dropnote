@@ -22,6 +22,7 @@ const workspace = $("workspace");
 const syncStatus = $("sync-status");
 const syncError = $("sync-error");
 const noteCopy = $("copy-note");
+const noteClipboardStatus = $("note-clipboard-status");
 const noteDownload = $("download-note");
 const replaceNoteDialog = $("replace-note-dialog");
 const uploadNotice = $("upload-notice");
@@ -100,23 +101,22 @@ $("redo-note").addEventListener("click", () => note?.redo());
 $("paste-note").addEventListener("click", async () => {
   if (!canReplaceNote() || readingClipboard) return;
   const editor = note;
-  const status = $("note-paste-status");
   const mayPaste = () => note === editor && canReplaceNote() && !document.querySelector("dialog[open]");
   readingClipboard = true;
-  status.textContent = "";
+  noteClipboardStatus.textContent = "";
   updateActions();
   try {
     const text = await navigator.clipboard.readText();
     if (!mayPaste()) return;
     if (!text) {
-      status.textContent = t("The clipboard contains no text.");
+      noteClipboardStatus.textContent = t("The clipboard contains no text.");
       return;
     }
     editor.appendText(text);
-    status.textContent = t("Text pasted.");
+    noteClipboardStatus.textContent = t("Text pasted.");
   } catch {
     if (mayPaste()) {
-      status.textContent = t("Use your device’s Paste action in the note.");
+      noteClipboardStatus.textContent = t("Use your device’s Paste action in the note.");
       editor.focusEnd();
     }
   } finally {
@@ -124,7 +124,7 @@ $("paste-note").addEventListener("click", async () => {
     updateActions();
   }
 });
-noteCopy.addEventListener("click", () => copyText(noteText, $("note-copy-status"), t("Text copied.")));
+noteCopy.addEventListener("click", () => copyText(noteText, noteClipboardStatus, t("Text copied.")));
 
 noteDownload.addEventListener("click", () => {
   if (!noteText || workspace.hidden) return;
@@ -371,8 +371,7 @@ function closeWorkspace() {
     if ($(id)?.open) $(id).close();
   }
   workspace.hidden = true;
-  $("note-copy-status").textContent = "";
-  $("note-paste-status").textContent = "";
+  noteClipboardStatus.textContent = "";
   canUndo = canRedo = false;
   changesPending = false;
 }

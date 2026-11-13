@@ -68,8 +68,6 @@ export const PAD_CSS = `
   .remote-cursor-name { position: absolute; z-index: 1; inset-block-end: 100%; inset-inline-start: -2px; max-inline-size: 10rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--surface); color: var(--fg); border: 1px solid var(--cursor); border-radius: 3px; padding: 0 .25rem; font: 600 .7rem/1.2 system-ui, sans-serif; }
   .remote-cursor::before { content: ""; position: absolute; top: -.1em; left: -2px; width: 5px; height: 4px; background: var(--cursor); border-radius: 1px; }
   .workspace-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .3rem 1rem; min-height: 2.65rem; align-items: center; padding: .45rem 0; color: var(--muted); font-size: .8rem; }
-  #note-copy-status:empty { display: none; }
-  #note-copy-status { color: var(--muted); font-size: .8rem; }
   #sync-status { display: inline-flex; align-items: center; gap: .45rem; }
   #sync-status::before { content: ""; width: .48rem; height: .48rem; border-radius: 50%; background: currentColor; }
   #sync-status[data-state="live"] { color: var(--positive); }
@@ -156,8 +154,7 @@ export const PAD_CSS = `
   #note-view .menu-items label { padding: .4rem .55rem; cursor: pointer; }
   #note-view input { accent-color: var(--accent); }
   #note-tools #undo-note, #note-tools #redo-note { padding-inline: .6rem; }
-  #note-paste-status { color: var(--muted); margin: .5rem .75rem 0; }
-  #note-paste-status:empty { display: none; }
+  #note-clipboard-status { min-height: 1.5em; margin: .25rem .75rem 0; color: var(--muted); font-size: .875rem; }
   #password-groups { display: block; color: var(--muted); margin-top: .5rem; font: .875rem ui-monospace, monospace; }
   #note .cm-gutters { background: var(--panel); color: var(--muted); border-color: var(--border); }
   #note .cm-lineNumbers .cm-gutterElement { padding-inline: .55rem; }
@@ -200,7 +197,10 @@ export const PAD_CSS = `
     #note .cm-editor { height: clamp(13rem, 42vh, 27rem); }
   }
   @media (max-width: 34rem) {
-    #note-tools { column-gap: .25rem; }
+    .workspace-actions, #note-tools { width: 100%; }
+    #note-tools { position: relative; column-gap: .25rem; }
+    #note-view { position: static; }
+    #note-view .menu-items { max-width: 100%; }
     #attachments li { grid-template-columns: minmax(0, 1fr); }
   }
   @media (pointer: coarse) {

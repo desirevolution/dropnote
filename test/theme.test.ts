@@ -73,6 +73,8 @@ test("the pages degrade sanely to narrow screens (Story 36)", async () => {
     const body = await (await fetch(`${server.baseUrl}/`)).text();
     const style = /<style>([\s\S]*?)<\/style>/.exec(body)?.[1] ?? "";
     assert.match(style, /\.workspace-toolbar, \.workspace-tabs,[^{]*\{[^}]*flex-wrap: wrap/, "workspace controls wrap on narrow screens");
+    assert.match(style, /@media \(max-width: 34rem\) \{\s*\.workspace-actions, #note-tools \{ width: 100%; \}\s*#note-tools \{ position: relative;[^}]*\}\s*#note-view \{ position: static; \}\s*#note-view \.menu-items \{ max-width: 100%; \}/,
+      "the mobile view menu is constrained by the full toolbar, even if its button wraps onto the left");
     assert.match(style, /#pad-qr-dialog\s*{[^}]*min\(34rem, calc\(100vw - 2rem\)\)/, "the QR dialog fits narrow viewports");
   } finally {
     await server.stop();

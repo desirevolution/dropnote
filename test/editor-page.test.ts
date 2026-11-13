@@ -22,6 +22,8 @@ test("the Default Pad shows the plain-text editor alongside its files", async ()
     assert.doesNotMatch(body, /id="my-pads-dialog"|id="remember-pad"/);
     assert.match(body, /id="word-wrap" checked>/);
     assert.match(body, /id="line-numbers">/);
+    assert.match(body, /id="note-panel"[^>]*>[\s\S]*?<p id="note-clipboard-status" role="status"><\/p>[\s\S]*?<div id="note">/,
+      "copy and paste feedback has a shared status line above the editor, outside the toolbar");
     assert.match(body, /id="paste-note" disabled>/);
     assert.match(body, /id="undo-note"[^>]*disabled>/);
     assert.match(body, /id="redo-note"[^>]*disabled>/);
