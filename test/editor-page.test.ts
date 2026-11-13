@@ -82,7 +82,7 @@ test("the page and word lists follow supported browser languages", async (t) => 
   assert.match(german.headers.get("vary") ?? "", /Accept-Language/i);
   const page = await german.text();
   assert.match(page, /<html lang="de">/);
-  assert.match(page, /Neuer Space/);
+  assert.match(page, /Neue Ablage/);
   assert.match(page, /Zeilennummern/);
   assert.match(page, /Instanzvorgabe \(7 Tage\)/);
 

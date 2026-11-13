@@ -157,7 +157,8 @@ test("private spaces have owner-only management and revocable read and edit role
 
   const stored = PadStore.open(dataDir, true).getLivePad(slug);
   assert.equal(stored?.owner, owner);
-  assert.deepEqual(stored?.grants, [{ username: collaborator, role: "edit" }]);
+  assert.deepEqual(stored?.grants?.map(({ username, role }) => ({ username, role })), [{ username: collaborator, role: "edit" }]);
+  assert.ok(stored?.grants?.[0]?.unreadId);
   assert.throws(() => PadStore.open(dataDir), /different MULTIUSER mode/);
   const revoked = once(editor, "close");
   assert.equal((await grant(null)).status, 200);
@@ -386,7 +387,44 @@ test("Default notes and attachments are isolated per account", async (t) => {
   const personal = Object.values(records).find((pad) => pad.owner === owner);
   assert.ok(personal);
   assert.equal((await request(`/api/pads/${encodeURIComponent(personal.slug)}`, owner)).status, 404);
-  assert.deepEqual(await (await request("/api/my-spaces", owner)).json(), { spaces: [] });
+  assert.deepEqual(await (await request("/api/my-spaces", owner)).json(), { spaces: [], sharedSpaces: [] });
   assert.equal((await json(`${defaultApi}/ttl`, owner, "POST", { ttl: 60 })).status, 403);
   assert.equal((await request(defaultApi, owner, { method: "DELETE" })).status, 403);
+});
+
+test("new shares are discoverable per account until opened and acknowledged", async (t) => {
+  const { request, json, dataDir } = await setup(t);
+  assert.equal((await json("/api/pads", owner, "POST", { slug })).status, 201);
+  const shared = async (username: string) => (await (await request("/api/my-spaces", username)).json()).sharedSpaces;
+  const grant = (role: "read" | "edit" | null) => json(`${api}/access`, owner, "PUT", { username: collaborator, role });
+  const ack = (username: string, unreadId: string) => json(`${api}/access-seen`, username, "PUT", { unreadId });
+  assert.deepEqual(await shared(collaborator), []);
+  await request(`${api}/access-requests`, collaborator, { method: "POST", headers: { origin }, redirect: "manual" });
+  const { requests } = await (await request(`${api}/access`, owner)).json();
+  assert.equal((await json(`${api}/access-requests/${requests[0].id}`, owner, "PUT", { role: "read" })).status, 200);
+  assert.deepEqual(await shared(owner), []);
+  assert.deepEqual(await shared("charlie"), []);
+  const [first] = await shared(collaborator);
+  assert.equal(first.isNew, true);
+  assert.equal(first.sharedBy, owner);
+  assert.equal(first.canEdit, false);
+  assert.equal(first.path, `/p/${slug}`);
+  assert.equal((await request(api, collaborator, { method: "HEAD" })).status, 200);
+  const page = await (await request(first.path, collaborator)).text();
+  const unreadId = /"unreadGrantId":"([^"]+)"/.exec(page)?.[1];
+  assert.ok(unreadId);
+  assert.equal((await shared(collaborator))[0].isNew, true);
+  assert.equal((await ack("charlie", unreadId)).status, 404);
+  assert.equal((await ack(owner, unreadId)).status, 204);
+  assert.equal((await shared(collaborator))[0].isNew, true);
+  assert.equal((await ack(collaborator, unreadId)).status, 204);
+  assert.equal((await shared(collaborator))[0].isNew, false);
+  assert.equal(PadStore.open(dataDir, true).getLivePad(slug)?.grants?.[0]?.unreadId, undefined);
+  await grant("edit");
+  assert.equal((await shared(collaborator))[0].isNew, false);
+  await grant(null);
+  assert.deepEqual(await shared(collaborator), []);
+  await grant("edit");
+  await ack(collaborator, unreadId);
+  assert.equal((await shared(collaborator))[0].isNew, true);
 });

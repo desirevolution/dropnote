@@ -33,6 +33,7 @@ export type GrantRole = "read" | "edit";
 export interface PadGrant {
   username: string;
   role: GrantRole;
+  unreadId?: string;
 }
 
 export interface PadAccessRequest {
@@ -154,14 +155,35 @@ export class PadStore {
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
 
+  sharedPads(username: string) {
+    return Object.values(this.#index.pads).flatMap((pad) => {
+      if (isDefaultPad(pad.slug) || !pad.owner || pad.owner === username || !this.getLivePad(pad.slug)) return [];
+      const grant = pad.grants?.find((entry) => entry.username === username);
+      return grant ? [{ pad, grant }] : [];
+    });
+  }
+
+  markPadGrantSeen(pad: PadRecord, username: string, unreadId: unknown): void {
+    const grant = pad.grants?.find((entry) => entry.username === username);
+    if (!grant?.unreadId || grant.unreadId !== unreadId) return;
+    const previous = grant.unreadId;
+    delete grant.unreadId;
+    try {
+      this.#save();
+    } catch (error) {
+      grant.unreadId = previous;
+      throw error;
+    }
+  }
+
   setPadGrant(pad: PadRecord, username: string, role: GrantRole | null): boolean {
     const previous = pad.grants;
-    const current = previous?.find((grant) => grant.username === username)?.role ?? null;
-    if (current === role) return false;
+    const current = previous?.find((grant) => grant.username === username);
+    if ((current?.role ?? null) === role) return false;
     pad.grants = (previous ?? []).filter((grant) => grant.username !== username);
     const previousRequests = pad.accessRequests;
     if (role) {
-      pad.grants.push({ username, role });
+      pad.grants.push({ username, role, unreadId: current ? current.unreadId : randomUUID() });
       pad.accessRequests = previousRequests?.filter((request) => request.username !== username);
     }
     try {

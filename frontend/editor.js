@@ -77,7 +77,7 @@ const tabs = initWorkspaceTabs({
 
 setStorageUser(metadata.username);
 initPadActions();
-initSpaceAccess(api, deleteSpace);
+initSpaceAccess(api, deleteSpace, metadata.unreadGrantId);
 const navigation = initPadNavigation(metadata);
 
 $("copy-link").addEventListener("click", () => copyText(padUrl, $("copy-status"), t("Link copied.")));

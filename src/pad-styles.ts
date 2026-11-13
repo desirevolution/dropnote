@@ -146,8 +146,10 @@ export const PAD_CSS = `
   .request-count { min-inline-size: 1.4em; padding-inline: .25em; border-radius: 1em; background: var(--accent); color: var(--on-accent); text-align: center; }
   #my-pads-list, .account-list { max-height: 45vh; overflow-y: auto; }
   #my-pads-list li, .account-list li { display: flex; align-items: center; justify-content: space-between; gap: .5rem; border-bottom: 1px solid var(--border); padding: .4rem .25rem; }
-  #owned-spaces-list li { flex-wrap: wrap; }
-  #owned-spaces-list li .my-pad-detail { flex-basis: 100%; order: 1; }
+  .shared-spaces { margin-block-start: 1rem; border-top: 1px solid var(--border); }
+  .shared-spaces h3 { font-size: 1rem; margin-block: .75rem .25rem; }
+  #owned-spaces-list li, #shared-spaces-list li { flex-wrap: wrap; }
+  #owned-spaces-list li .my-pad-detail, #shared-spaces-list li .my-pad-detail { flex-basis: 100%; order: 1; }
   #owned-spaces-list li .my-pad-detail:empty { display: none; }
   .account-list li > :first-child { min-width: 0; overflow-wrap: anywhere; }
   #my-pads-list a { overflow-wrap: anywhere; }

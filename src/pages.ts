@@ -118,7 +118,10 @@ export function renderPadPage(pad: PadRecord, options: PadPageOptions): string {
     encryption: pad.encryption && { salt: pad.encryption.salt, check: pad.encryption.check },
     pinProtected: pad.pin !== undefined,
     ...(username ? { username: options.username, canEdit: options.canEdit } : {}),
-    ...(username && !canManage && !fixed ? { sharedBy: pad.owner } : {}),
+    ...(username && !canManage && !fixed ? {
+      sharedBy: pad.owner,
+      unreadGrantId: pad.grants?.find((grant) => grant.username === options.username)?.unreadId,
+    } : {}),
   }).replace(/</g, "\\u003c");
   const isEncrypted = pad.kind === "encrypted";
   return `<!doctype html>
@@ -143,7 +146,7 @@ ${PAD_CSS}
     </div>
     <nav class="actions" aria-label="${t("Spaces")}">
       <a href="/" id="home-link" class="home-link">${icon("home")} ${t("Home")}</a>
-      <button type="button" data-open-dialog="owned-spaces-dialog" aria-haspopup="dialog">${t("My spaces")}${username ? ` <span id="access-request-badge" class="request-count" role="img" hidden></span>` : ""}</button>
+      <button type="button" data-open-dialog="owned-spaces-dialog" aria-haspopup="dialog">${t("My spaces")}${username ? ` <span id="access-request-badge" class="request-count" role="img" hidden></span> <span id="shared-space-badge" class="request-count" role="img" hidden></span>` : ""}</button>
       ${username ? `<button type="button" data-open-dialog="my-pads-dialog" aria-haspopup="dialog">${t("Bookmarks")}</button>` : ""}
       <button type="button" id="theme-toggle" data-light-label="${t("Light mode")}" data-dark-label="${t("Dark mode")}" class="icon-button" aria-label="${t("Toggle dark or light mode")}">${icon("moon", "theme-moon")}${icon("sun", "theme-sun")}</button>
       ${username ? `<span class="account-name" title="${username}">${username}</span>` : ""}
@@ -360,6 +363,11 @@ ${PAD_CSS}
     ${defaultSpace}
     <ul class="account-list" id="owned-spaces-list"></ul>
     <p class="files-empty" id="owned-spaces-status" role="status"></p>
+    ${username ? `<section class="shared-spaces" aria-labelledby="shared-spaces-title" hidden>
+      <h3 id="shared-spaces-title">${t("Shared with me")}</h3>
+      <ul class="account-list" id="shared-spaces-list"></ul>
+      <p class="files-empty" id="shared-spaces-empty">${t("No spaces shared with you yet.")}</p>
+    </section>` : ""}
   </dialog>
 
   ${username && canManage && !fixed ? `<dialog id="space-access-dialog" aria-labelledby="space-access-title">

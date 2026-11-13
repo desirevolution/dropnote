@@ -1,5 +1,5 @@
 import { spaceLabel } from "../src/space-label.ts";
-import { dateLabel, isStartPad, startBadge } from "./pad-navigation.js";
+import { dateLabel, isStartPad, sharingLabel, startBadge } from "./pad-navigation.js";
 
 import { t } from "./i18n.js";
 
@@ -16,39 +16,113 @@ function requestLabel(count) {
   return t(count === 1 ? "{count} access request" : "{count} access requests", { count });
 }
 
-export function initSpaceAccess(api, deleteSpace) {
+export function initSpaceAccess(api, deleteSpace, unreadGrantId) {
   const openAccess = document.querySelector('[data-open-dialog="space-access-dialog"]');
   const owned = $("owned-spaces-list");
   const ownedStatus = $("owned-spaces-status");
   const badge = $("access-request-badge");
+  const sharedBadge = $("shared-space-badge");
+  const sharedList = $("shared-spaces-list");
+  let renderedShared;
   let loadNumber = 0;
   let requestNumber = 0;
+  let appliedRequest = 0;
+  let refreshing = false;
+  const requestLinks = new Map();
+  let requestCounts = new Map();
+
+  function showRequestCount(link, name, count) {
+    link.hidden = count === 0;
+    link.textContent = count ? requestLabel(count) : "";
+    if (count) link.setAttribute("aria-label", t("{label} for {name}", { label: link.textContent, name }));
+  }
 
   async function loadOwnedSpaces() {
     const request = ++requestNumber;
-    const { spaces } = await getJson("/api/my-spaces", { signal: AbortSignal.timeout(10_000) });
-    if (badge && request === requestNumber) {
+    const { spaces, sharedSpaces = [] } = await getJson("/api/my-spaces", { signal: AbortSignal.timeout(10_000) });
+    if (badge && request > appliedRequest) {
+      appliedRequest = request;
+      requestCounts = new Map(spaces.map((space) => [space.slug, space.accessRequestCount]));
+      for (const [slug, { link, name }] of requestLinks) {
+        showRequestCount(link, name, requestCounts.get(slug) ?? 0);
+      }
       const count = spaces.reduce((total, space) => total + space.accessRequestCount, 0);
       badge.hidden = count === 0;
-      badge.textContent = count ? String(count) : "";
+      badge.textContent = count ? `? ${count}` : "";
       badge.title = requestLabel(count);
       badge.setAttribute("aria-label", badge.title);
+      updateSharedSpaces(sharedSpaces);
     }
     return spaces;
   }
 
-  function refreshBadge() {
-    if (badge && !document.hidden) void loadOwnedSpaces().catch(() => {});
+  function updateSharedSpaces(spaces) {
+    const count = spaces.filter((space) => space.isNew).length;
+    sharedBadge.hidden = count === 0;
+    sharedBadge.textContent = count ? String(count) : "";
+    sharedBadge.title = t(count === 1 ? "{count} new share" : "{count} new shares", { count });
+    sharedBadge.setAttribute("aria-label", sharedBadge.title);
+    const snapshot = JSON.stringify(spaces);
+    if (renderedShared === snapshot) return;
+    renderedShared = snapshot;
+    sharedList.closest("section").hidden = false;
+    $("shared-spaces-empty").hidden = spaces.length > 0;
+    const focused = document.activeElement?.closest("#shared-spaces-list a")?.href;
+    sharedList.replaceChildren(...spaces.map((space) => {
+      const row = document.createElement("li");
+      const link = document.createElement("a");
+      link.href = space.path;
+      link.textContent = spaceLabel(space.slug, space.displayName);
+      const detail = document.createElement("span");
+      detail.className = "my-pad-detail";
+      detail.textContent = sharingLabel(space);
+      row.append(link, startBadge(space));
+      if (space.isNew) {
+        const marker = document.createElement("span");
+        marker.className = "request-count";
+        marker.textContent = t("New");
+        row.append(marker);
+      }
+      row.append(detail);
+      return row;
+    }));
+    if (focused) [...sharedList.querySelectorAll("a")].find((link) => link.href === focused)?.focus();
+  }
+
+  async function refreshBadge() {
+    if (!badge || document.hidden || refreshing) return;
+    refreshing = true;
+    try {
+      if (unreadGrantId) {
+        const response = await fetch(`${api}/access-seen`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ unreadId: unreadGrantId }),
+          signal: AbortSignal.timeout(8_000),
+        }).catch(() => null);
+        if (response?.ok || response?.status === 404) unreadGrantId = null;
+      }
+      await loadOwnedSpaces();
+    } catch {
+      // Keep the last known count and retry on the next refresh.
+    } finally {
+      refreshing = false;
+    }
   }
 
   if (badge) {
-    refreshBadge();
+    void refreshBadge();
     document.addEventListener("visibilitychange", refreshBadge);
-    window.setInterval(refreshBadge, 30_000);
+    window.addEventListener("focus", refreshBadge);
+    window.addEventListener("pageshow", (event) => {
+      if (event.persisted) void refreshBadge();
+    });
+    window.setInterval(refreshBadge, 10_000);
   }
   document.querySelector('[data-open-dialog="owned-spaces-dialog"]').addEventListener("click", async () => {
     const load = ++loadNumber;
     owned.replaceChildren();
+    requestLinks.clear();
     ownedStatus.textContent = t("Loading…");
     try {
       const spaces = await loadOwnedSpaces();
@@ -70,11 +144,11 @@ export function initSpaceAccess(api, deleteSpace) {
           space.expiresAt ? t("Expires {date}", { date: dateLabel(space.expiresAt) }) : "",
         ].filter(Boolean).join(" · ");
         row.append(link, startBadge(space), detail);
-        if (space.accessRequestCount > 0) {
+        if (badge) {
           const requests = document.createElement("a");
           requests.href = `${space.path}#space-access-dialog`;
-          requests.textContent = requestLabel(space.accessRequestCount);
-          requests.setAttribute("aria-label", t("{label} for {name}", { label: requests.textContent, name: link.textContent }));
+          showRequestCount(requests, link.textContent, requestCounts.get(space.slug) ?? 0);
+          requestLinks.set(space.slug, { link: requests, name: link.textContent });
           if (openAccess && location.pathname === space.path) {
             requests.addEventListener("click", (event) => {
               if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -95,7 +169,8 @@ export function initSpaceAccess(api, deleteSpace) {
           try {
             if (!await deleteSpace(space) || load !== loadNumber) return;
             row.remove();
-            refreshBadge();
+            requestLinks.delete(space.slug);
+            void loadOwnedSpaces().catch(() => {});
             ownedStatus.textContent = owned.children.length ? "" : t("You haven't created any spaces yet.");
           } catch (error) {
             if (load === loadNumber) ownedStatus.textContent = error.message || t("Could not delete this space.");
@@ -171,7 +246,7 @@ export function initSpaceAccess(api, deleteSpace) {
         row.append(name, remove);
         return row;
       }));
-      if (success) refreshBadge();
+      if (success) void loadOwnedSpaces().catch(() => {});
       status.textContent = success || (grants.length ? "" : t("No one else has access."));
     } catch (error) {
       status.textContent = error.message || t("Access could not be updated.");

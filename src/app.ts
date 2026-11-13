@@ -183,16 +183,27 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
 
   app.get("/api/my-spaces", (_req, res) => {
     const username = requestUsername(res);
-    res.set("Cache-Control", "private, no-store").json({ spaces: store.ownedPads(username).map((pad) => ({
+    const summary = (pad: PadRecord) => ({
       slug: pad.slug,
       path: `${config.padPath}/${pad.slug}`,
       displayName: pad.displayName ?? null,
       createdAt: pad.createdAt,
       expiresAt: pad.expiresAt,
       encrypted: pad.kind === "encrypted",
+    });
+    const spaces = store.ownedPads(username).map((pad) => ({
+      ...summary(pad),
       accessRequestCount: pad.accessRequests?.length ?? 0,
       sharedWith: (pad.grants ?? []).map((grant) => grant.username),
-    })) });
+    }));
+    res.set("Cache-Control", "private, no-store").json({
+      spaces,
+      ...(username !== null ? {
+        sharedSpaces: store.sharedPads(username).map(({ pad, grant }) => ({
+          ...summary(pad), sharedBy: pad.owner, canEdit: grant.role === "edit", isNew: Boolean(grant.unreadId),
+        })),
+      } : {}),
+    });
   });
 
   if (config.trustedProxies) {
@@ -213,7 +224,17 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
       res.redirect(303, `${config.padPath}/${encodeURIComponent(slug)}?access=requested${filesView}`);
     });
 
-    const accessState = (pad: PadRecord) => ({ grants: pad.grants ?? [], requests: pad.accessRequests ?? [] });
+    app.put("/api/pads/:slug/access-seen", (req, res) => {
+      const pad = getPadOrAnswer404(store, req.params.slug as string, res);
+      if (!pad) return;
+      store.markPadGrantSeen(pad, requestUsername(res)!, req.body?.unreadId);
+      res.status(204).end();
+    });
+
+    const accessState = (pad: PadRecord) => ({
+      grants: (pad.grants ?? []).map(({ username, role }) => ({ username, role })),
+      requests: pad.accessRequests ?? [],
+    });
     const ownerAccess: RequestHandler = (req, res, next) => {
       const pad = getPadOrAnswer404(store, req.params.slug as string, res);
       if (!pad) return;
