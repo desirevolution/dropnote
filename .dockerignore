@@ -17,7 +17,8 @@ data
 test
 docs
 .scratch
-public
+public/*
+!public/fonts/
 tsconfig.json
 
 # Local configuration — never bake a host's .env into the image

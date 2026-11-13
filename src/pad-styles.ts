@@ -1,4 +1,5 @@
 export const PAD_CSS = `
+  @font-face { font-family: "IBM Plex Mono"; src: url("/fonts/IBMPlexMono-Regular.woff2") format("woff2"); font-style: normal; font-weight: 400; font-display: swap; }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 1rem/1.5 system-ui, sans-serif; }
@@ -58,10 +59,10 @@ export const PAD_CSS = `
   .transfer-notice { justify-content: space-between; padding: .25rem .6rem; margin-bottom: .65rem; background: var(--panel); border-radius: .25rem; font-size: .875rem; }
   .card, .access-panel { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: .375rem; }
   .note-card { overflow: hidden; isolation: isolate; }
-  #note .cm-editor { height: clamp(22rem, 64vh, 52rem); background: var(--surface); }
+  #note .cm-editor { height: min(clamp(22rem, 64vh, 52rem), var(--note-visible-height, 100vh)); background: var(--surface); }
   #note[data-font-size="small"] { --note-font-size: .84rem; }
   #note[data-font-size="large"] { --note-font-size: 1.15rem; }
-  #note .cm-scroller { font: var(--note-font-size, .96rem)/1.65 ui-monospace, "DejaVu Sans Mono", monospace; }
+  #note .cm-scroller { font: var(--note-font-size, .96rem)/1.65 "IBM Plex Mono", ui-monospace, "DejaVu Sans Mono", monospace; }
   #note .cm-content { padding: 1rem 1.1rem; caret-color: var(--fg); }
   #note .cm-line { padding: 0; }
   #note .cm-focused { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -147,7 +148,7 @@ export const PAD_CSS = `
   .menu-items button, .menu-items a { display: flex; justify-content: flex-start; width: 100%; border: 0; padding: .45rem .7rem; font-size: .875rem; color: var(--fg); }
   .menu-items a { text-decoration: none; border-radius: .25rem; }
   .menu-items a:hover { background: var(--panel); }
-  .menu-items .danger { color: var(--error); }
+  .menu-items .danger, #owned-spaces-list .danger { color: var(--error); }
   .pad-notice { color: var(--muted); margin-bottom: .75rem; }
   .start-marker { display: inline-flex; align-items: center; gap: .3rem; width: fit-content; padding: .15rem .4rem; color: var(--accent); background: var(--accent-soft); border-radius: .25rem; font-size: .8rem; font-weight: 600; }
   .start-marker svg { width: .85rem; height: .85rem; }
@@ -197,7 +198,7 @@ export const PAD_CSS = `
   @media (max-width: 46rem) {
     .topbar-inner, main { width: calc(100% - 2rem); }
     main { padding-top: 1.25rem; }
-    #note .cm-editor { height: clamp(13rem, 42vh, 27rem); }
+    #note .cm-editor { height: min(clamp(13rem, 42vh, 27rem), var(--note-visible-height, 100vh)); }
   }
   @media (max-width: 34rem) {
     .workspace-actions, #note-tools { width: 100%; }

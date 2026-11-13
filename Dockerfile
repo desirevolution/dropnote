@@ -25,6 +25,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --silent && npm cache clean --force
 COPY --from=build /app/public/js/editor.bundle.js public/js/editor.bundle.js
+COPY public/fonts/ public/fonts/
 COPY src/ src/
 # Pre-create the data directory with the runtime user's ownership so an
 # anonymous volume starts out writable without a root step.

@@ -12,7 +12,7 @@ async function getJson(url, options) {
   return result;
 }
 
-export function initSpaceAccess(api) {
+export function initSpaceAccess(api, deleteSpace) {
   const openAccess = document.querySelector('[data-open-dialog="space-access-dialog"]');
   const owned = $("owned-spaces-list");
   const ownedStatus = $("owned-spaces-status");
@@ -56,6 +56,24 @@ export function initSpaceAccess(api) {
           }
           row.append(requests);
         }
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "danger";
+        remove.textContent = t("Delete space");
+        remove.setAttribute("aria-label", t("Delete space {name}", { name: link.textContent }));
+        remove.addEventListener("click", async () => {
+          remove.disabled = true;
+          try {
+            if (!await deleteSpace(space) || load !== loadNumber) return;
+            row.remove();
+            ownedStatus.textContent = owned.children.length ? "" : t("You haven't created any spaces yet.");
+          } catch (error) {
+            if (load === loadNumber) ownedStatus.textContent = error.message || t("Could not delete this space.");
+          } finally {
+            remove.disabled = false;
+          }
+        });
+        row.append(remove);
         owned.append(row);
       }
     } catch {

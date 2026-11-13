@@ -22,8 +22,14 @@ test("the Default Pad shows the plain-text editor alongside its files", async ()
     assert.doesNotMatch(body, /id="my-pads-dialog"|id="remember-pad"/);
     assert.match(body, /<select id="note-font-size">[\s\S]*?<option value="standard" selected>/);
     assert.match(body, /id="word-wrap" checked>/);
-    assert.match(body, /id="note-view"[\s\S]*?id="read-mode">/);
-    assert.match(body, /id="leave-read-mode"[^>]* hidden>/);
+    assert.match(body, /class="workspace-footer">[\s\S]*?id="read-mode">/);
+    const viewMenu = /<details id="note-view"[\s\S]*?<\/details>/.exec(body)?.[0] ?? "";
+    assert.doesNotMatch(viewMenu, /id="read-mode"/);
+    assert.match(body, /IBM Plex Mono/);
+    const font = await fetch(`${server.baseUrl}/fonts/IBMPlexMono-Regular.woff2`);
+    assert.equal(font.status, 200);
+    assert.match(font.headers.get("content-type") ?? "", /font\/woff2/);
+    assert.equal(Buffer.from(await font.arrayBuffer()).subarray(0, 4).toString(), "wOF2");
     assert.match(body, /id="line-numbers">/);
     assert.match(body, /id="note-panel"[^>]*>[\s\S]*?<p id="note-clipboard-status" role="status"><\/p>[\s\S]*?<div id="note">/,
       "copy and paste feedback has a shared status line above the editor, outside the toolbar");

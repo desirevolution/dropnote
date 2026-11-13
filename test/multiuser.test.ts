@@ -195,6 +195,18 @@ test("multiuser grants layer with encryption proof and account-bound editing PIN
   })).status, 200);
   assert.equal((await control(socket(slug, owner, { token, proof }), "replay-done")).writable, true);
   assert.equal((await control(socket(slug, collaborator, { token, proof }), "replay-done")).writable, false);
+
+  const deletionHeaders = { origin, "x-pad-proof": proof, authorization: `Bearer ${token}` };
+  assert.equal((await request(api, collaborator, { method: "DELETE", headers: deletionHeaders })).status, 403);
+  assert.equal((await request(api, "outsider", { method: "DELETE", headers: deletionHeaders })).status, 404);
+  assert.equal((await request(api, owner, {
+    method: "DELETE", headers: { origin, "x-pad-created-at": "stale" },
+  })).status, 409);
+  const pad = await (await request(api, owner)).json();
+  assert.equal((await request(api, owner, {
+    method: "DELETE", headers: { origin, "x-pad-created-at": pad.createdAt },
+  })).status, 204);
+  await rejected(socket(slug, collaborator, { proof }), 404);
 });
 
 test("single-user mode ignores identity headers and keeps links usable", async (t) => {

@@ -1,7 +1,7 @@
 /**
  * Per-Pad PIN (ticket 05): an optional 4–10 digit PIN set at creation; a
  * Share Link alone is read-only (the relay rejects submitted updates);
- * entering the PIN unlocks editing plus management (early delete, TTL
+ * entering the PIN unlocks editing plus management (TTL
  * extension). PIN checks are constant-time with a lockout after repeated
  * failures. Everything is driven black-box over HTTP + WebSocket (seam 1).
  */
@@ -454,21 +454,13 @@ test("extending a TTL requires the Pad's PIN when one is set", async () => {
   }
 });
 
-test("deleting a Pad early requires the Pad's PIN when one is set", async () => {
+test("deleting a PIN-protected Pad in single-user mode needs no PIN", async () => {
   const dataDir = await makeTempDataDir();
   const server = await startServer({ dataDir });
   try {
     await createPad(server.baseUrl, { slug: "doomed", pin: "1357" });
-    const refused = await fetch(`${server.baseUrl}/api/pads/doomed`, { method: "DELETE" });
-    assert.equal(refused.status, 403, "deletion is refused without a capability");
-    assert.equal((await fetch(`${server.baseUrl}/p/doomed`)).status, 200, "the refused Pad still exists");
-
-    const token = await tokenFor(server.baseUrl, "doomed", "1357");
-    const deleted = await fetch(`${server.baseUrl}/api/pads/doomed`, {
-      method: "DELETE",
-      headers: { authorization: `Bearer ${token}` },
-    });
-    assert.equal(deleted.status, 204, "the PIN holder may delete the Pad early");
+    const deleted = await fetch(`${server.baseUrl}/api/pads/doomed`, { method: "DELETE" });
+    assert.equal(deleted.status, 204, "the instance user may delete the Pad early");
     assert.equal((await fetch(`${server.baseUrl}/p/doomed`)).status, 404, "the Pad's page is gone");
 
     const stranger = new WebSocket(server.syncUrl("doomed"));

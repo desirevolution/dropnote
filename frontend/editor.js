@@ -77,7 +77,7 @@ const tabs = initWorkspaceTabs({
 
 setStorageUser(metadata.username);
 initPadActions();
-initSpaceAccess(api);
+initSpaceAccess(api, deleteSpace);
 const navigation = initPadNavigation(metadata);
 
 $("copy-link").addEventListener("click", () => copyText(padUrl, $("copy-status"), t("Link copied.")));
@@ -133,12 +133,10 @@ for (const preference of viewPreferences) {
   });
 }
 const readModeOption = $("read-mode");
-const leaveReadMode = $("leave-read-mode");
-readMode = localValue(readModeKey) === "1";
-readModeOption.checked = readMode;
+if (readModeOption) readModeOption.checked = readMode = localValue(readModeKey) === "1";
 function setReadMode(enabled) {
   readMode = enabled;
-  readModeOption.checked = enabled;
+  if (readModeOption) readModeOption.checked = enabled;
   applyEditingState();
 }
 function changeReadMode(enabled) {
@@ -147,11 +145,10 @@ function changeReadMode(enabled) {
     notice(t("This browser could not save the read-only preference."));
   }
 }
-readModeOption.addEventListener("change", () => changeReadMode(readModeOption.checked));
-leaveReadMode.addEventListener("click", () => changeReadMode(false));
+readModeOption?.addEventListener("change", () => changeReadMode(readModeOption.checked));
 window.addEventListener("storage", (event) => {
   if (event.storageArea !== localStorage) return;
-  if (event.key === storageKey(readModeKey) || event.key === null) {
+  if (readModeOption && (event.key === storageKey(readModeKey) || event.key === null)) {
     setReadMode(localValue(readModeKey) === "1");
   }
   for (const preference of viewPreferences) {
@@ -296,7 +293,7 @@ function updateActions() {
     "clear-note": !writable || !noteText,
     "clear-files": !writable || !fileCount || clearing,
     "change-ttl": !writable || managing,
-    "delete-pad": !writable || managing,
+    "delete-pad": managing,
   };
   for (const [id, disabled] of Object.entries(states)) {
     if ($(id)) $(id).disabled = disabled;
@@ -320,7 +317,6 @@ function setState(state) {
 function applyEditingState() {
   writable = connectionState === "writable" && !readMode;
   if (!writable) cancelNoteReplacement();
-  leaveReadMode.hidden = !readMode;
   $("unlock-editing").hidden = readMode || connectionState !== "readonly" || !metadata.pinProtected || metadata.canEdit === false;
   updateSyncStatus();
   note?.setEditing(writable);
@@ -551,16 +547,12 @@ $("clear-files")?.addEventListener("click", async () => {
 });
 
 $("delete-pad")?.addEventListener("click", async () => {
-  if (!writable || managing || !window.confirm(t("Delete “{name}”, its note and all its files?", { name: spaceLabel(metadata.slug, metadata.displayName) }))) return;
+  if (managing) return;
   const current = generation;
   managing = true;
   updateActions();
   try {
-    const response = await fetch(api, { method: "DELETE", headers: writeHeaders() });
-    if (!response.ok) throw new Error(await responseError(response));
-    if (unlockKey) saveLocal(unlockKey, null);
-    forgetPad(metadata);
-    location.assign("/default");
+    await deleteSpace(metadata);
   } catch (error) {
     if (generation === current) notice(error.message || t("Could not delete this space."));
   } finally {
@@ -568,6 +560,21 @@ $("delete-pad")?.addEventListener("click", async () => {
     updateActions();
   }
 });
+
+async function deleteSpace(space) {
+  if (!window.confirm(t("Delete “{name}”, its note and all its files?", { name: spaceLabel(space.slug, space.displayName) }))) return false;
+  const response = await fetch(`/api/pads/${encodeURIComponent(space.slug)}`, {
+    method: "DELETE",
+    headers: { "x-pad-created-at": space.createdAt },
+  });
+  if (!response.ok) throw new Error(await responseError(response));
+  forgetPad(space);
+  if (space.slug === metadata.slug && space.createdAt === metadata.createdAt) {
+    if (unlockKey) saveLocal(unlockKey, null);
+    location.assign("/default");
+  }
+  return true;
+}
 
 $("rename-space")?.addEventListener("click", () => {
   $("display-name").value = metadata.displayName ?? "";

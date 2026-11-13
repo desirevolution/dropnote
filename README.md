@@ -74,7 +74,7 @@ Browser bookmarks, start-page choices and remembered keys from the previous buil
 | Create a space | **New space** offers an optional display name and encryption. Under **More options**, you can set a custom URL address, expiry and editing PIN. Dropnote generates an address if you leave it empty and uses the name from that address when no display name is set. |
 | Find a space | **My spaces** lists all active spaces in single-user mode and the spaces you own in multiuser mode. In multiuser mode, use **⋯ → Bookmark space** on a space shared with you to add it to **Bookmarks** on this browser. |
 | Share a space | Use **Copy link** or **⋯ → QR code**. Copy the QR image where the browser supports it or download it as a PNG. In multiuser mode, grant access via **Manage access** or let the recipient request it. |
-| Edit or copy the note | The **Note** tab offers **Paste text**, **Copy text**, and undo and redo. **View options** holds **Font size**, **Word wrap**, **Line numbers** and **Read only**. Spaces containing only files open the **Files** tab. |
+| Edit or copy the note | The **Note** tab offers **Paste text**, **Copy text**, and undo and redo. **View options** holds **Font size**, **Word wrap**, and **Line numbers**. Spaces containing only files open the **Files** tab. |
 | Rename a space | **⋯ → Rename space** changes the display name in the space, **My spaces** and bookmarks. Links and QR codes still use the original address. This action requires the same permissions and unlocks as other space management actions. |
 | Download the note | **⋯ → Download text (.txt)** saves a local UTF-8 text file named after the space address and the Unix timestamp in milliseconds, for example `project-notes-1794552905123.txt`. The downloaded file is plaintext, including when the note is encrypted in Dropnote. |
 | Share a screenshot or file | Use **Add files** in the Note tab, click or drop files on **Choose files** in the Files tab, or paste an image into the editor or anywhere in the Files tab. Transfers and retries are visible in both tabs. The file list shows the newest uploads first. Use **Copy files link** to open the Files tab directly. Open an image preview and choose **Copy image** to copy the full-resolution image as PNG. Clipboard access depends on browser support and permission. |
@@ -99,7 +99,7 @@ The passphrase is fixed for the lifetime of a Pad. Save it somewhere safe, as th
 
 ## PIN — edit gating and management
 
-An optional **editing PIN** (4–10 digits) unlocks writes for someone who already has permission to edit. It gates edits to the Note, uploads, file removal, Pad deletion and expiry changes. In multiuser mode, deletion and expiry changes also require ownership. **Default** is permanent.
+An optional **editing PIN** (4–10 digits) unlocks writes for someone who already has permission to edit. It gates edits to the Note, uploads, file removal, renaming and expiry changes. To delete a space and all its files, use **My spaces → Delete space** and confirm. Deletion requires ownership in multiuser mode and access to the instance in single-user mode. It works while the space is locked, including spaces protected by a PIN. **Default** is permanent.
 
 The PIN form exchanges the PIN for a short-lived token via `POST /api/pads/<Slug>/pin`. The token rides on the sync connection as `?token=…` and on HTTP requests as `Authorization: Bearer …`. After ten minutes the UI returns to read-only. Encrypted requests also use the browser's separate Pad proof. The server never receives the passphrase or encryption Key.
 
@@ -145,13 +145,13 @@ Invalid settings are reported at startup. See [`.env.example`](.env.example) for
 
 ## Security model
 
-**Single-user access.** Anyone who can reach the instance and knows a space's address can open its page. The editing PIN controls writes. An encrypted space requires its passphrase to open its content.
+**Single-user access.** Anyone who can reach a single-user instance can list and delete its spaces. The editing PIN controls writes. An encrypted space requires its passphrase to open its content.
 
 **Multiuser access.** Dropnote accepts the username from the trusted proxy and checks space permissions on the server for pages, API calls, file transfers and Live-Sync. A link or QR code supplies the address. The owner grants permissions to the exact login name. A denied account receives the same 404 as it would for a missing space.
 
 **Encrypted spaces.** The browser derives a 256-bit Key with PBKDF2-HMAC-SHA-256, 600,000 iterations and a per-Pad salt. AES-GCM protects the Note, attachment metadata, file contents and transient cursor positions. In multiuser mode, account names and permissions are visible to the server, and active cursor labels identify the editors to other participants. The server retains ciphertext, Pad metadata and the digest of a separate access proof. A strong, unique passphrase matters because a copy of the stored data permits offline guessing. HTTPS or localhost is required by the browser for Web Crypto.
 
-**Editing PIN and lockout.** The PIN gates relay writes, Attachment uploads/removals and management on that Pad; comparison is constant-time and only scrypt material is stored. A multiuser PIN token is bound to the account that unlocked editing.
+**Editing PIN and lockout.** The PIN gates relay writes, Attachment uploads/removals, renaming and expiry changes on that Pad; comparison is constant-time and only scrypt material is stored. A multiuser PIN token is bound to the account that unlocked editing.
 
 **Instance PIN.** `INSTANCE_PIN` gates only Pad creation, keeping strangers from filling a public instance's disk; it never restricts reading or editing existing Pads.
 
@@ -267,8 +267,8 @@ The test harness starts the real server as a child process (fresh `DATA_DIR`, ep
 
 `test/deployment.test.ts` is the deployment smoke test: it builds the Docker image, boots a container with a temporary data volume, runs the API smoke facts against it (root serves the Default Pad page, JSON 404 shape), verifies the non-root UID and the data-dir ownership contract, asserts that a wrongly-owned directory fails boot with the permission error, and that data in the volume survives container replacement. It skips cleanly when Docker is unavailable; the first run builds the image (minutes), later runs reuse the layer cache.
 
-Use **View options → Read only** to prevent accidental edits and file changes on this browser. Dropnote remembers the setting per space and account. Live sync, copying and downloads remain available. Use **Exit read-only mode** from either tab to restore editing when your permissions allow it.
+Use **Read only** next to the connection status to prevent accidental edits and file changes on this browser. Dropnote remembers the setting per space and account. Live sync, copying and downloads remain available. Turn off **Read only** from either tab to restore editing when your permissions allow it. Spaces shared with read permission show **Read-only access**.
 
-The editor wraps text by default. Turn off **Word wrap** for horizontal scrolling and toggle **Line numbers** independently. Choose **Small**, **Standard** or **Large** to resize the note and line numbers. Font size, word wrap and line numbers are saved in this browser and shared across spaces for the active account. The note and file tabs use the available desktop width with side margins. The editor uses CodeMirror and Yjs, bundled with esbuild. The generated bundle is excluded from Git. Run `npm run build` to refresh it while the server is running. The Docker image builds and includes its own bundle.
+The editor wraps text by default. Turn off **Word wrap** for horizontal scrolling and toggle **Line numbers** independently. Choose **Small**, **Standard** or **Large** to resize the note and line numbers. Font size, word wrap and line numbers are saved in this browser and shared across spaces for the active account. The note and file tabs use the available desktop width with side margins. The editor uses the locally served IBM Plex Mono font and adjusts to the visible viewport when the mobile keyboard opens. The editor uses CodeMirror and Yjs, bundled with esbuild. The generated bundle is excluded from Git. Run `npm run build` to refresh it while the server is running. The Docker image builds and includes its own bundle.
 
 See the [glossary](GLOSSARY.md), the [encryption design](docs/adr/0001-client-side-e2e-zero-knowledge.md) and the [Live-Sync design](docs/adr/0002-yjs-live-sync-encrypted-relay.md).

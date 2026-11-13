@@ -180,7 +180,7 @@ ${PAD_CSS}
           ${fixed || canManage ? '<hr>' : ""}
           ${fixed
             ? `<button type="button" id="clear-note" class="danger" disabled>${t("Clear note")}</button><button type="button" id="clear-files" class="danger" disabled>${t("Remove all files")}</button>`
-            : canManage ? `<button type="button" id="delete-pad" class="danger" disabled>${t("Delete space")}</button>` : ""}
+            : canManage ? `<button type="button" id="delete-pad" class="danger">${t("Delete space")}</button>` : ""}
         </div>
       </details>
     </div>
@@ -239,7 +239,6 @@ ${PAD_CSS}
               </label>
               <label class="checkbox-field"><input type="checkbox" id="word-wrap" checked> ${t("Word wrap")}</label>
               <label class="checkbox-field"><input type="checkbox" id="line-numbers"> ${t("Line numbers")}</label>
-              <label class="checkbox-field"><input type="checkbox" id="read-mode"> ${t("Read only")}</label>
             </div>
           </details>
           <button type="button" id="choose-files" disabled>${icon("plus")} ${t("Add files")}</button>
@@ -274,7 +273,9 @@ ${PAD_CSS}
     </section>
     <footer class="workspace-footer">
       <span id="sync-status" role="status">${t("Connecting…")}</span>
-      <button type="button" id="leave-read-mode" class="quiet" hidden>${t("Exit read-only mode")}</button>
+      ${options.canEdit === false
+        ? `<span>${t("Read-only access")}</span>`
+        : `<label class="checkbox-field"><input type="checkbox" id="read-mode"> ${t("Read only")}</label>`}
       <button type="button" id="unlock-editing" class="quiet" data-open-dialog="pin-dialog" hidden>${t("Unlock editing")}</button>
     </footer>
   </div>

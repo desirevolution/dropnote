@@ -3,7 +3,7 @@
  * the capability-token exchange, and the client-IP lockout (5 failed
  * attempts, then PIN_LOCKOUT_SECONDS — 15 minutes by default). Spec: "PIN
  * security" — the same gate covers relay writes and the management
- * endpoints (early delete, TTL extension).
+ * endpoints (rename, TTL extension).
  */
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import type { PadRecord, PinRecord } from "./store.ts";

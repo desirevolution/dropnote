@@ -314,9 +314,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     res.status(403).json({ error: "The PIN is wrong", attemptsRemaining: result.attemptsRemaining });
   });
 
-  // Management (ticket 05): early deletion and TTL extension. With a PIN
-  // set, both require the capability token; without a PIN, the Share Link
-  // implies management just as it implies editing.
+  // Deletion only needs management rights. The stored contents can stay locked.
   app.delete("/api/pads/:slug", async (req, res) => {
     const slug = req.params.slug as string;
     const pad = getPadOrAnswer404(store, slug, res);
@@ -325,7 +323,15 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
       res.status(403).json({ error: "The Default Pad cannot be deleted" });
       return;
     }
-    if (!requireCapability(req, res, pad, pins)) return;
+    if (padRole(pad, requestUsername(res)) !== "owner") {
+      res.status(403).json({ error: "Only the owner can manage this space" });
+      return;
+    }
+    const expectedCreation = req.get("x-pad-created-at");
+    if (expectedCreation && expectedCreation !== pad.createdAt) {
+      res.status(409).json({ error: "This address now belongs to a different space. Reopen My spaces and try again." });
+      return;
+    }
     if (!await store.removePad(slug, options.onPadDeleted)) {
       jsonNoPad(res);
       return;
@@ -360,6 +366,10 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     const updated = store.extendPad(pad.slug, ttlSeconds);
     options.onExpiryChanged?.(pad.slug, updated?.expiresAt ?? null);
     res.status(200).json({ slug: pad.slug, expiresAt: updated?.expiresAt ?? null });
+  });
+
+  app.get("/fonts/IBMPlexMono-Regular.woff2", (_req, res) => {
+    res.sendFile("IBMPlexMono-Regular.woff2", { root: publicDir("fonts") });
   });
 
   // Additional Pads live under the configured path prefix (PAD_PATH).

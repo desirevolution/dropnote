@@ -76,11 +76,14 @@ test("an empty encrypted Pad verifies the passphrase and separates its proof fro
     const pin = await fetch(`${api}/pin`, { ...pinRequest, headers: { ...pinHeaders, "x-pad-proof": pad.proof } });
     assert.equal(pin.status, 200);
     const { token } = await pin.json();
-    for (const headers of [new Headers({ authorization: `Bearer ${token}` }), new Headers({ "x-pad-proof": pad.proof })]) {
-      assert.equal((await fetch(api, { method: "DELETE", headers })).status, 403);
+    const partialCredentials: HeadersInit[] = [
+      { "content-type": "application/json", authorization: `Bearer ${token}` },
+      { "content-type": "application/json", "x-pad-proof": pad.proof },
+    ];
+    for (const headers of partialCredentials) {
+      assert.equal((await fetch(`${api}/ttl`, { method: "POST", headers, body: "{}" })).status, 403);
     }
-    const authorized = { "x-pad-proof": pad.proof, authorization: `Bearer ${token}` };
-    assert.equal((await fetch(api, { method: "DELETE", headers: authorized })).status, 204);
+    assert.equal((await fetch(api, { method: "DELETE" })).status, 204);
     assert.equal((await fetch(pad.shareLink)).status, 404);
   } finally {
     await server.stop();

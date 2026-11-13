@@ -60,6 +60,61 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
   }
   const historyEvents = ["stack-item-added", "stack-item-popped", "stack-cleared"];
   for (const event of historyEvents) undoManager.on(event, updateHistory);
+  const visualViewport = window.visualViewport;
+  const touchScreen = window.matchMedia("(pointer: coarse)");
+  let normalHeight = visualViewport?.height ?? 0;
+  let viewportWidth = visualViewport?.width ?? 0;
+  let viewportFrame = 0;
+  let keyboardHeight;
+
+  function queueViewportUpdate() {
+    if (visualViewport && touchScreen.matches && !viewportFrame) {
+      viewportFrame = requestAnimationFrame(updateViewport);
+    }
+  }
+
+  function updateViewport() {
+    viewportFrame = 0;
+    const { height, width, scale, offsetTop } = visualViewport;
+    if (scale === 1) {
+      if (width !== viewportWidth || !editor.hasFocus) {
+        viewportWidth = width;
+        normalHeight = height;
+      } else {
+        normalHeight = Math.max(normalHeight, height);
+      }
+    }
+    const layoutHeight = document.documentElement.clientHeight;
+    const nextHeight = writable && editor.hasFocus && scale === 1 &&
+      Math.max(normalHeight, layoutHeight) - height > 120 ? Math.max(1, Math.floor(height - 16)) : undefined;
+    if (nextHeight !== keyboardHeight) {
+      keyboardHeight = nextHeight;
+      if (nextHeight === undefined) editor.dom.style.removeProperty("--note-visible-height");
+      else editor.dom.style.setProperty("--note-visible-height", `${nextHeight}px`);
+      editor.requestMeasure();
+    }
+    if (nextHeight === undefined) return;
+
+    editor.dispatch({ effects: EditorView.scrollIntoView(editor.state.selection.main.head, { yMargin: 12 }) });
+    editor.requestMeasure({
+      read(view) {
+        const caret = view.coordsAtPos(view.state.selection.main.head);
+        if (!caret) return 0;
+        const top = offsetTop + 8;
+        const bottom = offsetTop + height - 8;
+        if (caret.bottom > bottom) return caret.bottom - bottom;
+        if (caret.top < top) return caret.top - top;
+        return 0;
+      },
+      write(distance) {
+        if (distance && editor.hasFocus && keyboardHeight !== undefined) window.scrollBy(0, distance);
+      },
+    });
+  }
+
+  visualViewport?.addEventListener("resize", queueViewportUpdate);
+  visualViewport?.addEventListener("scroll", queueViewportUpdate);
+
   const editor = new EditorView({
     parent: document.querySelector("#note"),
     doc: note.toString(),
@@ -82,6 +137,7 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
         if (update.docChanged) onText(update.state.doc.toString());
         if (update.docChanged || update.selectionSet || update.focusChanged) {
           queueCursor();
+          if (update.focusChanged || (keyboardHeight !== undefined && (update.selectionSet || update.docChanged))) queueViewportUpdate();
           if (update.docChanged && cursors.size) queueMicrotask(draw);
         }
       }),
@@ -156,6 +212,7 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
       writable = enabled;
       editor.dispatch({ effects: editing.reconfigure(editingMode(enabled)) });
       queueCursor();
+      queueViewportUpdate();
     },
     undo() {
       if (writable) undoManager.undo();
@@ -199,6 +256,9 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
     destroy() {
       clearTimeout(timer);
       clearInterval(heartbeat);
+      cancelAnimationFrame(viewportFrame);
+      visualViewport?.removeEventListener("resize", queueViewportUpdate);
+      visualViewport?.removeEventListener("scroll", queueViewportUpdate);
       document.removeEventListener("visibilitychange", queueCursor);
       window.removeEventListener("blur", queueCursor);
       editor.destroy();

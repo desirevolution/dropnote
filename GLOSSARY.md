@@ -50,7 +50,7 @@ _Avoid_: password, secret
 The user-supplied secret required to open an Encrypted Pad. It is fixed when the Pad is created.
 
 **PIN**:
-A per-Pad numeric credential that unlocks writes for an account with edit permission, including early deletion or expiry changes when the account can manage the Pad.
+A per-Pad numeric credential that unlocks writes for an account with edit permission, including expiry changes when the account can manage the Pad.
 _Avoid_: password, passcode
 
 **Reader**:
