@@ -16,11 +16,12 @@ test("the Default Pad shows the plain-text editor alongside its files", async ()
     const body = await response.text();
 
     assert.match(body, /class="brand" href="https:\/\/github\.com\/desirevolution\/dropnote"/);
-    assert.match(body, /class="release-version" href="https:\/\/github\.com\/desirevolution\/dropnote\/releases\/tag\/v0\.1\.4"[^>]*>v0\.1\.4<\/a>/);
+    assert.match(body, /<span class="release-version">v0\.1\.4<\/span>/);
     assert.match(body, /<a href="\/" id="home-link"/);
-    assert.match(body, /id="my-pads-dialog"[\s\S]*?<a href="\/default">Shared space<\/a>[\s\S]*?id="my-pads-list"/);
-    assert.doesNotMatch(body, /Open shared space/);
+    assert.match(body, /id="my-pads-dialog"[\s\S]*?<a href="\/default">Default<\/a>[\s\S]*?id="my-pads-list"/);
+    assert.doesNotMatch(body, /<a[^>]*class="release-version"/);
 
+    assert.match(body, /<button[^>]*id="download-note" disabled>Download text \(.txt\)<\/button>/);
     assert.match(body, /<div id="note"><\/div>/, "the editor has an empty mount point");
     assert.match(body, /role="tablist"/, "note and files have a shared tab list");
     assert.match(body, /id="note-tab"[^>]*role="tab"[^>]*aria-controls="note-panel"/);

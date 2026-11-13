@@ -83,7 +83,7 @@ export function renderPadPage(pad: PadRecord, options: PadPageOptions): string {
   const tag = options.releaseTag;
   const releaseTag = tag && tag.length <= 129 && RELEASE_TAG_PATTERN.test(tag) ? tag : null;
   const sharedSpace = `<div class="shared-space-entry">
-      <a href="/default">Shared space</a>
+      <a href="/default">${spaceLabel(DEFAULT_PAD_SLUG)}</a>
       <span id="shared-start-marker" class="my-pad-detail" hidden>Start page</span>
     </div>`;
   // The Note content lives in the Pad's Live-Sync document (ADR-0002) and is
@@ -116,7 +116,7 @@ ${PAD_CSS}
   <div class="topbar-inner">
     <div class="brand-group">
       <a class="brand" href="${PROJECT_URL}" title="Dropnote on GitHub" aria-label="Dropnote on GitHub"><span class="brand-mark">${icon("pad")}</span>Dropnote</a>
-      ${releaseTag ? `<a class="release-version" href="${PROJECT_URL}/releases/tag/${escapeHtml(releaseTag)}" aria-label="Dropnote release ${escapeHtml(releaseTag)}">${escapeHtml(releaseTag)}</a>` : '<span class="release-version">dev</span>'}
+      <span class="release-version">${releaseTag ?? "dev"}</span>
     </div>
     <nav class="actions" aria-label="Spaces">
       <a href="/" id="home-link" class="home-link">${icon("home")} Home</a>
@@ -146,6 +146,7 @@ ${PAD_CSS}
       <details class="pad-menu" id="pad-menu">
         <summary aria-label="Space actions" title="Space actions">⋯</summary>
         <div class="menu-items">
+          <button type="button" id="download-note" disabled>Download text (.txt)</button>
           <button type="button" id="remember-pad">Save space</button>
           <button type="button" id="set-start-pad">Set as start page</button>
           ${isEncrypted ? '<button type="button" id="lock-pad" hidden>Lock space</button>' : ""}
@@ -438,7 +439,7 @@ ${access
     : `<p>This space may be unavailable or require permission to open.</p>
 <form method="post" action="${escapeHtml(access.action)}"><button type="submit">Request access</button></form>`
   : "<p>There’s no space at this address. It may have expired, been deleted, or never existed.</p>"}
-<p><a href="/default">Open the shared space</a> or create a new space from there.</p>
+<p><a href="/default">Open Default</a> or create a new space from there.</p>
 </main>
 </body>
 </html>

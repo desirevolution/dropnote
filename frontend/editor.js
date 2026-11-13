@@ -18,6 +18,7 @@ const workspace = $("workspace");
 const syncStatus = $("sync-status");
 const syncError = $("sync-error");
 const noteCopy = $("copy-note");
+const noteDownload = $("download-note");
 const replaceNoteDialog = $("replace-note-dialog");
 const uploadNotice = $("upload-notice");
 const uploadNoticeText = $("upload-notice-text");
@@ -42,6 +43,7 @@ let writable = false;
 let connectionState = "connecting";
 let changesPending = false;
 let noteText = "";
+let lastExportTime = 0;
 let noteReplacement;
 let fileCount = 0;
 let clearing = false;
@@ -82,6 +84,22 @@ $("show-pad-qr").addEventListener("click", async () => {
 $("pad-qr-link").href = padUrl;
 $("pad-qr-link").textContent = padUrl;
 noteCopy.addEventListener("click", () => copyText(noteText, $("note-copy-status"), "Text copied."));
+
+noteDownload.addEventListener("click", () => {
+  if (!noteText || workspace.hidden) return;
+
+  lastExportTime = Math.max(Date.now(), lastExportTime + 1);
+  const blob = new Blob([noteText], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${metadata.slug}-${lastExportTime}.txt`;
+  try {
+    link.click();
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+});
 
 document.addEventListener("paste", (event) => {
   if (!canReplaceNote() || event.defaultPrevented || document.querySelector("dialog[open]")) return;
@@ -157,7 +175,7 @@ function showExpiry(expiresAt) {
 }
 
 function updateActions() {
-  noteCopy.disabled = !noteText;
+  noteCopy.disabled = noteDownload.disabled = !noteText;
   const states = {
     "clear-note": !writable || !noteText,
     "clear-files": !writable || !fileCount || clearing,
@@ -388,10 +406,10 @@ initPinUnlock(metadata, {
 });
 
 $("clear-note")?.addEventListener("click", () => {
-  if (writable && window.confirm("Clear all text in the shared space?")) note.clear();
+  if (writable && window.confirm("Clear all text in Default?")) note.clear();
 });
 $("clear-files")?.addEventListener("click", async () => {
-  if (!writable || clearing || !window.confirm(`Remove all ${fileCount} files from the shared space?`)) return;
+  if (!writable || clearing || !window.confirm(`Remove all ${fileCount} files from Default?`)) return;
   clearing = true;
   updateActions();
   try {

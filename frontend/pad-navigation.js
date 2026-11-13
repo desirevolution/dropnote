@@ -103,7 +103,7 @@ function forgetMissingStart(selected) {
   saveLocal(startKey, null);
   const storage = localStore();
   if (!storageUser && storage && selected.url) removeMyPad(storage, selected.url, selected.createdAt);
-  notice("Your start page is unavailable. The shared space is open instead.");
+  notice("Your start page is unavailable. Default is open instead.");
   return false;
 }
 
@@ -169,7 +169,7 @@ export function initPadNavigation(metadata) {
         remove.setAttribute("aria-label", `Remove bookmark for ${spaceLabel(pad.slug)}`);
         remove.addEventListener("click", () => {
           if (samePad(startPad(), pad)) {
-            if (!window.confirm("Remove this bookmark and reset your start page to Shared space?")) return;
+            if (!window.confirm("Remove this bookmark and reset your start page to Default?")) return;
             if (!saveLocal(startKey, null)) {
               notice("This browser could not reset the start page.");
               return;
@@ -212,7 +212,7 @@ export function initPadNavigation(metadata) {
     });
     if (saveLocal(startKey, value)) {
       const saved = !value || rememberPad(metadata);
-      const title = value ? spaceLabel(metadata.slug) : "Shared space";
+      const title = value ? spaceLabel(metadata.slug) : spaceLabel("default");
       const storage = localStore();
       const previousSaved = previous && storage && listMyPads(storage).some((pad) => samePad(previous, pad));
       const previousMessage = previousSaved ? ` Find ${spaceLabel(previous.slug)} in Saved spaces.` : "";

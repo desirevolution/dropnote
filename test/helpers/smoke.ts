@@ -59,7 +59,7 @@ export async function assertDefaultPadPage(probe: Probe): Promise<PadMetadata> {
 
   assert.match(response.contentType, /^text\/html/, "the Default Pad page is HTML");
 
-  assert.match(response.body, /<h1 class="visually-hidden">Shared space<\/h1>/, "the shared space has an accessible heading");
+  assert.match(response.body, /<h1 class="visually-hidden">Default<\/h1>/, "the shared space has an accessible heading");
   assert.match(response.body, /<div id="note"><\/div>/, "the Note starts out empty");
   assert.doesNotMatch(response.body, /stack\s*at/i, "no stack traces leak into the page");
   return readPadMetadata(response.body);

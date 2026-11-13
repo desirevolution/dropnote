@@ -19,7 +19,7 @@ _Avoid_: body, text, description
 A file attached to a Pad's flat list. The contents and metadata of Attachments on Encrypted Pads are encrypted.
 _Avoid_: upload, file, blob
 
-**Shared space** (internally, **Default Pad**)
+**Default** (internally, **Default Pad**)
 
 The permanent, unencrypted workspace at `/default`. Anyone with instance access can edit it.
 _Avoid_: home pad, main pad
@@ -78,7 +78,7 @@ _Avoid_: server-side encryption
 
 **Start page**
 
-The space this browser opens at the site root. Shared space remains available at `/default`.
+The space this browser opens at the site root. **Default** remains available at `/default`.
 
 **Saved spaces**
 
