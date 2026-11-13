@@ -1,9 +1,6 @@
-import { createEncryption } from "./passphrase.js";
+import { createEncryption, passwordCharacters } from "./passphrase.js";
 import { language, t } from "./i18n.js";
 import { openCreatedSpace } from "./share-secret.js";
-
-// Lowercase letters and digits with common lookalikes removed.
-const passwordCharacters = "abcdefghjkmnpqrtuvwxy346789";
 
 const $ = (id) => document.getElementById(id);
 

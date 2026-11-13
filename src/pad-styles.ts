@@ -17,7 +17,7 @@ export const PAD_CSS = `
   .primary:hover:not(:disabled) { background: var(--accent-hover); }
 
   .topbar { background: var(--surface); border-bottom: 1px solid var(--border); }
-  .topbar-inner, main { width: min(76rem, calc(100% - 4rem)); margin-inline: auto; }
+  .topbar-inner, main { width: calc(100% - 4rem); margin-inline: auto; }
   .topbar-inner { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 3.5rem; }
   .brand { display: inline-flex; align-items: center; gap: .6rem; color: var(--fg); font-weight: 700; text-decoration: none; white-space: nowrap; }
   .brand-group { display: flex; align-items: baseline; flex-wrap: wrap; gap: .25rem .6rem; min-width: 0; }
@@ -57,9 +57,11 @@ export const PAD_CSS = `
   .workspace-tabs [role="tab"][aria-selected="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
   .transfer-notice { justify-content: space-between; padding: .25rem .6rem; margin-bottom: .65rem; background: var(--panel); border-radius: .25rem; font-size: .875rem; }
   .card, .access-panel { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: .375rem; }
-  .note-card { overflow: hidden; }
+  .note-card { overflow: hidden; isolation: isolate; }
   #note .cm-editor { height: clamp(22rem, 64vh, 52rem); background: var(--surface); }
-  #note .cm-scroller { font: .96rem/1.65 ui-monospace, "DejaVu Sans Mono", monospace; }
+  #note[data-font-size="small"] { --note-font-size: .84rem; }
+  #note[data-font-size="large"] { --note-font-size: 1.15rem; }
+  #note .cm-scroller { font: var(--note-font-size, .96rem)/1.65 ui-monospace, "DejaVu Sans Mono", monospace; }
   #note .cm-content { padding: 1rem 1.1rem; caret-color: var(--fg); }
   #note .cm-line { padding: 0; }
   #note .cm-focused { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -152,6 +154,7 @@ export const PAD_CSS = `
   .menu-items hr { border: 0; border-top: 1px solid var(--border); margin: .25rem 0; }
   #note-view summary { display: flex; gap: .4rem; padding: .45rem .65rem; }
   #note-view .menu-items label { padding: .4rem .55rem; cursor: pointer; }
+  #note-view .editor-font-option { display: grid; gap: .25rem; }
   #note-view input { accent-color: var(--accent); }
   #note-tools #undo-note, #note-tools #redo-note { padding-inline: .6rem; }
   #note-clipboard-status { min-height: 1.5em; margin: .25rem .75rem 0; color: var(--muted); font-size: .875rem; }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { WebSocket } from "ws";
-import { derivePadKey, presenceKey, verifyPadKey } from "../frontend/passphrase.js";
+import { createEncryption, derivePadKey, presenceKey, unlockPadKey, verifyPadKey } from "../frontend/passphrase.js";
 import { decodeBase64url, encodeBase64url, decryptBlob, encryptBlob } from "../frontend/crypto.js";
 import { createEncryptedPad } from "./helpers/encrypted-pad.ts";
 import { makeTempDataDir, startServer } from "./helpers/server.ts";
@@ -22,6 +22,24 @@ test("the fixed Pad has a direct address, and browser start-pad lookups identify
   } finally {
     await server.stop();
   }
+});
+
+test("generated passwords accept their displayed groups and literal passphrases take precedence", async () => {
+  const compact = "k7mw4hqx9vce6tr3n";
+  const grouped = "k7mw 4hqx 9vce 6tr3n";
+  const generated = await createEncryption(compact);
+  const key = await unlockPadKey(compact, generated);
+  assert.ok(key);
+  assert.deepEqual(await unlockPadKey(grouped, generated), key);
+  assert.deepEqual(await unlockPadKey(grouped.replaceAll(" ", "\u00a0"), generated), key);
+  assert.equal(await unlockPadKey(grouped + "\n", generated), null);
+  assert.equal(await unlockPadKey(grouped.replace(" ", "-"), generated), null);
+  assert.equal(await unlockPadKey(grouped.replace("k", "K"), generated), null);
+
+  const custom = await createEncryption(grouped);
+  const literalKey = await unlockPadKey(grouped, custom);
+  assert.deepEqual(literalKey, await derivePadKey(grouped, custom.salt));
+  assert.equal(await unlockPadKey(compact, custom), null);
 });
 
 test("an empty encrypted Pad verifies the passphrase and separates its proof from the editing PIN", async () => {

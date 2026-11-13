@@ -142,6 +142,9 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
       editor.scrollDOM.scrollTo(...scrollPosition);
       editor.requestMeasure();
     },
+    requestMeasure() {
+      editor.requestMeasure();
+    },
     setWordWrap(enabled) {
       editor.dispatch({ effects: wrapping.reconfigure(enabled ? EditorView.lineWrapping : []) });
     },

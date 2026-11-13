@@ -20,7 +20,10 @@ test("the Default Pad shows the plain-text editor alongside its files", async ()
     assert.match(body, /<a href="\/" id="home-link"/);
     assert.match(body, /id="owned-spaces-dialog"[\s\S]*?<a href="\/default">Default<\/a>[\s\S]*?id="owned-spaces-list"/);
     assert.doesNotMatch(body, /id="my-pads-dialog"|id="remember-pad"/);
+    assert.match(body, /<select id="note-font-size">[\s\S]*?<option value="standard" selected>/);
     assert.match(body, /id="word-wrap" checked>/);
+    assert.match(body, /id="note-view"[\s\S]*?id="read-mode">/);
+    assert.match(body, /id="leave-read-mode"[^>]* hidden>/);
     assert.match(body, /id="line-numbers">/);
     assert.match(body, /id="note-panel"[^>]*>[\s\S]*?<p id="note-clipboard-status" role="status"><\/p>[\s\S]*?<div id="note">/,
       "copy and paste feedback has a shared status line above the editor, outside the toolbar");

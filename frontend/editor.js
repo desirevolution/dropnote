@@ -4,7 +4,7 @@ import { initShareQr } from "./share-qr.js";
 import { consumeOpeningSecret } from "./share-secret.js";
 import { t } from "./i18n.js";
 import { decodeBase64url, encodeBase64url } from "./crypto.js";
-import { derivePadKey, padProof, presenceKey, verifyPadKey } from "./passphrase.js";
+import { padProof, presenceKey, unlockPadKey, verifyPadKey } from "./passphrase.js";
 import { initAttachments } from "./attachments.js";
 import { initNoteEditor } from "./note-editor.js";
 import { startLiveSync } from "./live-sync.js";
@@ -34,6 +34,7 @@ const lockEvent = encryption ? `dropnote:lock:${encryption.salt}` : null;
 const padUrl = new URL(metadata.path, location.origin).href;
 const filesUrl = new URL(padUrl);
 filesUrl.searchParams.set("view", "files");
+const readModeKey = `dropnote:read-mode:${metadata.slug}:${metadata.createdAt}`;
 const api = `/api/pads/${encodeURIComponent(metadata.slug)}`;
 
 let doc;
@@ -45,6 +46,7 @@ let pinTimer;
 let proof;
 let generation = 0;
 let writable = false;
+let readMode = false;
 let connectionState = "connecting";
 let changesPending = false;
 let noteText = "";
@@ -85,8 +87,77 @@ const qr = initShareQr(padUrl, metadata.slug);
 const wordWrap = $("word-wrap");
 const lineNumbers = $("line-numbers");
 const noteView = $("note-view");
-wordWrap.addEventListener("change", () => note?.setWordWrap(wordWrap.checked));
-lineNumbers.addEventListener("change", () => note?.setLineNumbers(lineNumbers.checked));
+const noteFontSize = $("note-font-size");
+const noteMount = $("note");
+const viewPreferences = [
+  {
+    key: "dropnote:note-font-size",
+    control: noteFontSize,
+    read(value) {
+      noteFontSize.value = value === "small" || value === "large" ? value : "standard";
+    },
+    value: () => noteFontSize.value,
+    apply() {
+      noteMount.dataset.fontSize = noteFontSize.value;
+      note?.requestMeasure();
+    },
+  },
+  {
+    key: "dropnote:note-word-wrap",
+    control: wordWrap,
+    read(value) {
+      wordWrap.checked = value !== "0";
+    },
+    value: () => wordWrap.checked ? "1" : "0",
+    apply: () => note?.setWordWrap(wordWrap.checked),
+  },
+  {
+    key: "dropnote:note-line-numbers",
+    control: lineNumbers,
+    read(value) {
+      lineNumbers.checked = value === "1";
+    },
+    value: () => lineNumbers.checked ? "1" : "0",
+    apply: () => note?.setLineNumbers(lineNumbers.checked),
+  },
+];
+function restoreViewPreference(preference) {
+  preference.read(localValue(preference.key));
+  preference.apply();
+}
+for (const preference of viewPreferences) {
+  restoreViewPreference(preference);
+  preference.control.addEventListener("change", () => {
+    preference.apply();
+    saveLocal(preference.key, preference.value());
+  });
+}
+const readModeOption = $("read-mode");
+const leaveReadMode = $("leave-read-mode");
+readMode = localValue(readModeKey) === "1";
+readModeOption.checked = readMode;
+function setReadMode(enabled) {
+  readMode = enabled;
+  readModeOption.checked = enabled;
+  applyEditingState();
+}
+function changeReadMode(enabled) {
+  setReadMode(enabled);
+  if (!saveLocal(readModeKey, enabled ? "1" : null)) {
+    notice(t("This browser could not save the read-only preference."));
+  }
+}
+readModeOption.addEventListener("change", () => changeReadMode(readModeOption.checked));
+leaveReadMode.addEventListener("click", () => changeReadMode(false));
+window.addEventListener("storage", (event) => {
+  if (event.storageArea !== localStorage) return;
+  if (event.key === storageKey(readModeKey) || event.key === null) {
+    setReadMode(localValue(readModeKey) === "1");
+  }
+  for (const preference of viewPreferences) {
+    if (event.key === storageKey(preference.key) || event.key === null) restoreViewPreference(preference);
+  }
+});
 document.addEventListener("click", (event) => {
   if (!noteView.contains(event.target)) noteView.open = false;
 });
@@ -233,20 +304,25 @@ function updateActions() {
 }
 
 function setState(state) {
-  writable = state === "writable";
-  if (!writable) cancelNoteReplacement();
   if (state === "readonly") {
     clearTimeout(pinTimer);
     writeToken = null;
   }
-  const active = writable || state === "readonly";
+  const active = state === "writable" || state === "readonly";
   if (active) {
     workspace.hidden = false;
     tabs.showInitial(noteText, fileCount);
   }
   connectionState = state;
+  applyEditingState();
+}
+
+function applyEditingState() {
+  writable = connectionState === "writable" && !readMode;
+  if (!writable) cancelNoteReplacement();
+  leaveReadMode.hidden = !readMode;
+  $("unlock-editing").hidden = readMode || connectionState !== "readonly" || !metadata.pinProtected || metadata.canEdit === false;
   updateSyncStatus();
-  $("unlock-editing").hidden = state !== "readonly" || !metadata.pinProtected || metadata.canEdit === false;
   note?.setEditing(writable);
   attachments?.setEditing(writable);
   updateActions();
@@ -258,7 +334,7 @@ function updateSyncStatus() {
   const showPending = !writable && changesPending;
   syncStatus.dataset.state = failed ? "error" : active && !showPending ? "live" : "pending";
   const label = {
-    writable: t("Connected"),
+    writable: t(readMode ? "Read only" : "Connected"),
     readonly: t("Read only"),
     connecting: t("Connecting…"),
     reconnecting: t("Connection lost · reconnecting…"),
@@ -424,10 +500,9 @@ function initPassphrase() {
     error.hidden = true;
     submit.disabled = true;
     try {
-      const key = await derivePadKey(passphrase, encryption.salt);
+      const key = await unlockPadKey(passphrase, encryption);
       if (current !== generation) return;
-      if (!await verifyPadKey(key, encryption.check)) throw new Error("Invalid passphrase");
-      if (current !== generation) return;
+      if (!key) throw new Error("Invalid passphrase");
       if (remember && !saveLocal(unlockKey, encodeBase64url(key))) {
         notice(t("This browser could not save the unlock. The space is open for this visit."));
       }
@@ -582,10 +657,9 @@ async function start() {
   if (incoming) {
     const current = generation;
     try {
-      const key = await derivePadKey(incoming.passphrase, encryption.salt);
-      const valid = await verifyPadKey(key, encryption.check);
+      const key = await unlockPadKey(incoming.passphrase, encryption);
       if (current !== generation) return;
-      if (valid) {
+      if (key) {
         if (incoming.created) qr.setPassphrase(incoming.passphrase);
         return openPad(key);
       }

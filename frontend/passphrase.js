@@ -1,4 +1,11 @@
-import { decodeBase64url, encodeBase64url, decryptBlob, encryptBlob } from "./crypto.js";
+import { DecryptionError, decodeBase64url, encodeBase64url, decryptBlob, encryptBlob } from "./crypto.js";
+
+// Lowercase letters and digits with common lookalikes removed.
+export const passwordCharacters = "abcdefghjkmnpqrtuvwxy346789";
+const generatedPasswordGroups = new RegExp(
+  `^[${passwordCharacters}]{4}[ \u00a0]+[${passwordCharacters}]{4}[ \u00a0]+[${passwordCharacters}]{4}[ \u00a0]+[${passwordCharacters}]{5}(?![\\s\\S])`,
+  "u",
+);
 
 const text = new TextEncoder();
 const iterations = 600_000;
@@ -37,4 +44,21 @@ export async function createEncryption(passphrase) {
 
 export async function verifyPadKey(key, check) {
   return (await decryptBlob(key, decodeBase64url(check))).length === 0;
+}
+
+/** Try the literal passphrase before treating spaces as display separators. */
+export async function unlockPadKey(passphrase, { salt, check }) {
+  async function verify(candidate) {
+    const key = await derivePadKey(candidate, salt);
+    try {
+      return await verifyPadKey(key, check) ? key : null;
+    } catch (error) {
+      if (error instanceof DecryptionError) return null;
+      throw error;
+    }
+  }
+
+  const key = await verify(passphrase);
+  if (key || !generatedPasswordGroups.test(passphrase)) return key;
+  return verify(passphrase.replace(/[ \u00a0]/gu, ""));
 }

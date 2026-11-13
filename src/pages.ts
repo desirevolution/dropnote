@@ -229,8 +229,17 @@ ${PAD_CSS}
           <details id="note-view" class="pad-menu">
             <summary>${icon("view")} ${t("View options")}</summary>
             <div class="menu-items">
+              <label class="editor-font-option">
+                ${t("Font size")}
+                <select id="note-font-size">
+                  <option value="small">${t("Small")}</option>
+                  <option value="standard" selected>${t("Standard")}</option>
+                  <option value="large">${t("Large")}</option>
+                </select>
+              </label>
               <label class="checkbox-field"><input type="checkbox" id="word-wrap" checked> ${t("Word wrap")}</label>
               <label class="checkbox-field"><input type="checkbox" id="line-numbers"> ${t("Line numbers")}</label>
+              <label class="checkbox-field"><input type="checkbox" id="read-mode"> ${t("Read only")}</label>
             </div>
           </details>
           <button type="button" id="choose-files" disabled>${icon("plus")} ${t("Add files")}</button>
@@ -265,6 +274,7 @@ ${PAD_CSS}
     </section>
     <footer class="workspace-footer">
       <span id="sync-status" role="status">${t("Connecting…")}</span>
+      <button type="button" id="leave-read-mode" class="quiet" hidden>${t("Exit read-only mode")}</button>
       <button type="button" id="unlock-editing" class="quiet" data-open-dialog="pin-dialog" hidden>${t("Unlock editing")}</button>
     </footer>
   </div>
@@ -303,7 +313,7 @@ ${PAD_CSS}
           <button type="button" id="suggest-passphrase">${t("Suggest six words")}</button>
           <button type="button" id="show-passphrase">${t("Show passphrase")}</button>
         </div>
-        <p id="password-groups" title="${t("Password in groups. Type it without spaces.")}" hidden></p>
+        <p id="password-groups" title="${t("Password in groups. Spaces between groups are optional.")}" hidden></p>
       </div>
       <details class="advanced-options" id="new-pad-options">
         <summary>${t("More options")} <span id="new-pad-expiry-summary"></span></summary>
