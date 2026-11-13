@@ -2,7 +2,7 @@ import { parseDisplayName } from "./space-label.ts";
 import { detectLanguage, type Language } from "./locale.ts";
 import { fileURLToPath } from "node:url";
 import express, { type Express, type ErrorRequestHandler, type RequestHandler } from "express";
-import { DEFAULT_PAD_SLUG, type GrantRole, type PadRecord, type PadStore, type PinRecord } from "./store.ts";
+import { isDefaultPad, publicPadSlug, type GrantRole, type PadRecord, type PadStore, type PinRecord } from "./store.ts";
 import { renderNotFoundPage, renderPadPage } from "./pages.ts";
 import { generateSlug, SlugTakenError, validateCustomSlug } from "./slug.ts";
 import { attachmentsRouter } from "./attachments.ts";
@@ -89,11 +89,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
   app.use("/api/pads", attachmentsRouter({ store, config, pins: options.pins }));
 
   app.get(["/", "/default"], (_req, res) => {
-    const pad = store.getPad(DEFAULT_PAD_SLUG);
-    if (!pad) {
-      res.status(500).json({ error: "The Default Pad is missing from the data index" });
-      return;
-    }
+    const pad = store.ensureDefaultPad(requestUsername(res));
     res.type("html").send(renderPadPage(pad, {
       ...pageOptions,
       language: res.locals.language,
@@ -210,7 +206,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
         return;
       }
       const slug = req.params.slug as string;
-      const pad = store.getLivePad(slug);
+      const pad = isDefaultPad(slug) ? undefined : store.getLivePad(slug);
       if (pad?.owner && !padRole(pad, username)) store.requestPadAccess(pad, username);
       // Give the same response for missing, private and already accessible spaces.
       const filesView = req.query.view === "files" ? "&view=files" : "";
@@ -221,7 +217,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     const ownerAccess: RequestHandler = (req, res, next) => {
       const pad = getPadOrAnswer404(store, req.params.slug as string, res);
       if (!pad) return;
-      if (padRole(pad, requestUsername(res)) !== "owner") {
+      if (isDefaultPad(pad.slug) || padRole(pad, requestUsername(res)) !== "owner") {
         res.status(403).json({ error: "Only the owner can manage access to this space" });
         return;
       }
@@ -268,8 +264,8 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     }
     const role = padRole(pad, requestUsername(res));
     res.set("Cache-Control", "private, no-store").json({
-      slug: pad.slug,
-      path: pad.slug === DEFAULT_PAD_SLUG ? "/default" : `${config.padPath}/${pad.slug}`,
+      slug: publicPadSlug(pad.slug),
+      path: isDefaultPad(pad.slug) ? "/default" : `${config.padPath}/${pad.slug}`,
       displayName: pad.displayName ?? null,
       createdAt: pad.createdAt,
       expiresAt: pad.expiresAt,
@@ -319,7 +315,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     const slug = req.params.slug as string;
     const pad = getPadOrAnswer404(store, slug, res);
     if (!pad) return;
-    if (slug === DEFAULT_PAD_SLUG) {
+    if (isDefaultPad(pad.slug)) {
       res.status(403).json({ error: "The Default Pad cannot be deleted" });
       return;
     }
@@ -342,7 +338,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
   app.patch("/api/pads/:slug", (req, res) => {
     const pad = getPadOrAnswer404(store, req.params.slug as string, res);
     if (!pad) return;
-    if (pad.slug === DEFAULT_PAD_SLUG) {
+    if (isDefaultPad(pad.slug)) {
       res.status(403).json({ error: "Default cannot be renamed." });
       return;
     }
@@ -359,6 +355,10 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
   app.post("/api/pads/:slug/ttl", (req, res) => {
     const pad = getPadOrAnswer404(store, req.params.slug as string, res);
     if (!pad) return;
+    if (isDefaultPad(pad.slug)) {
+      res.status(403).json({ error: "The Default Pad does not expire" });
+      return;
+    }
     if (!requireCapability(req, res, pad, pins)) return;
     const body = (req.body ?? {}) as { ttl?: unknown };
     const ttlSeconds = ttlFrom(body.ttl, config.defaultTtlSeconds, config.maxTtlSeconds, res);

@@ -89,6 +89,7 @@ test("private spaces have owner-only management and revocable read and edit role
   const ownerPage = await request(`/p/${slug}`, owner);
   assert.match(ownerPage.headers.get("cache-control") ?? "", /private, no-store/);
   const ownerBody = await ownerPage.text();
+  assert.match(ownerBody, /data-open-dialog="owned-spaces-dialog"[^>]*>[^<]*<span id="access-request-badge"/);
   assert.match(ownerBody, /Manage access/);
   assert.doesNotMatch(ownerBody, /id="remember-pad"/);
   const bytes = Buffer.from("private file");
@@ -330,4 +331,47 @@ test("an owner can rename a space without changing its address or access grants"
   assert.equal(PadStore.open(dataDir, true).getLivePad(slug)?.displayName, name);
   assert.deepEqual(await (await json(api, owner, "PATCH", { displayName: "" })).json(), { displayName: null });
   assert.match(await (await request(original.path, collaborator)).text(), /<h1 id="space-heading">Private space<\/h1>/);
+});
+
+test("Default notes and attachments are isolated per account", async (t) => {
+  const { request, json, socket, dataDir } = await setup(t);
+  const defaultApi = "/api/pads/default";
+  const ownerSocket = socket("default", owner);
+  const otherSocket = socket("default", collaborator);
+  const otherUpdates: string[] = [];
+  otherSocket.on("message", (data, binary) => {
+    if (binary) otherUpdates.push(data.toString());
+  });
+  await Promise.all([control(ownerSocket, "replay-done"), control(otherSocket, "replay-done")]);
+
+  const saved = control(ownerSocket, "update-accepted");
+  ownerSocket.send(Buffer.from("Alice's update"));
+  await saved;
+  const secondOwnerSocket = socket("default", owner);
+  const replayed: string[] = [];
+  secondOwnerSocket.on("message", (data, binary) => {
+    if (binary) replayed.push(data.toString());
+  });
+  await control(secondOwnerSocket, "replay-done");
+  assert.deepEqual(replayed, ["Alice's update"]);
+  // A response on the other socket is a barrier for any earlier broadcasts.
+  const otherSaved = control(otherSocket, "update-accepted");
+  otherSocket.send(Buffer.from("Bob's update"));
+  await otherSaved;
+  assert.deepEqual(otherUpdates, []);
+
+  const upload = await request(`${defaultApi}/attachments`, owner, { method: "POST", body: Buffer.from("Alice's file") });
+  assert.equal(upload.status, 201);
+  const { blobId } = await upload.json();
+  const file = `${defaultApi}/attachments/${blobId}`;
+  assert.equal(await (await request(file, owner)).text(), "Alice's file");
+  assert.equal((await request(file, collaborator)).status, 404);
+  assert.equal((await request(file, collaborator, { method: "DELETE" })).status, 404);
+  const records = PadStore.open(dataDir, true).getIndex().pads;
+  const personal = Object.values(records).find((pad) => pad.owner === owner);
+  assert.ok(personal);
+  assert.equal((await request(`/api/pads/${encodeURIComponent(personal.slug)}`, owner)).status, 404);
+  assert.deepEqual(await (await request("/api/my-spaces", owner)).json(), { spaces: [] });
+  assert.equal((await json(`${defaultApi}/ttl`, owner, "POST", { ttl: 60 })).status, 403);
+  assert.equal((await request(defaultApi, owner, { method: "DELETE" })).status, 403);
 });

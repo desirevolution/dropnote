@@ -3,7 +3,7 @@
  * JSON index maps Slug → Pad and is rewritten atomically on every change
  * (write to a temp file, rename over the target).
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { SlugTakenError } from "./slug.ts";
@@ -76,10 +76,20 @@ export interface PadIndex {
 }
 
 /**
- * The instance's built-in entry Pad: Plain, no TTL, always present, served at
- * the site root. It is seeded on first boot and never regenerated.
+ * The public address of the permanent, unencrypted entry Pad.
  */
 export const DEFAULT_PAD_SLUG = "default";
+
+// Underscores are excluded from public slugs.
+const PERSONAL_DEFAULT_PREFIX = "default_";
+
+export function isDefaultPad(slug: string): boolean {
+  return slug === DEFAULT_PAD_SLUG || slug.startsWith(PERSONAL_DEFAULT_PREFIX);
+}
+
+export function publicPadSlug(slug: string): string {
+  return isDefaultPad(slug) ? DEFAULT_PAD_SLUG : slug;
+}
 
 const INDEX_VERSION = 1;
 
@@ -140,7 +150,7 @@ export class PadStore {
 
   ownedPads(username: string | null): PadRecord[] {
     return Object.values(this.#index.pads)
-      .filter((pad) => pad.slug !== DEFAULT_PAD_SLUG && (username === null || pad.owner === username) && this.getLivePad(pad.slug))
+      .filter((pad) => !isDefaultPad(pad.slug) && (username === null || pad.owner === username) && this.getLivePad(pad.slug))
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
 
@@ -240,15 +250,33 @@ export class PadStore {
     return structuredClone(this.#index);
   }
 
-  ensureDefaultPad(): void {
-    if (this.#index.pads[DEFAULT_PAD_SLUG]) return;
-    this.#index.pads[DEFAULT_PAD_SLUG] = {
-      slug: DEFAULT_PAD_SLUG,
+  /** Resolve a public address to the account's private storage key. */
+  resolvePad(slug: string, username: string | null): PadRecord | undefined {
+    if (slug === DEFAULT_PAD_SLUG) return this.ensureDefaultPad(username);
+    if (isDefaultPad(slug)) return undefined;
+    return this.getLivePad(slug);
+  }
+
+  ensureDefaultPad(username: string | null = null): PadRecord {
+    const slug = username === null ? DEFAULT_PAD_SLUG :
+      PERSONAL_DEFAULT_PREFIX + createHash("sha256").update(username).digest("hex");
+    const existing = this.getPad(slug);
+    if (existing) return existing;
+    const pad: PadRecord = {
+      slug,
+      ...(username !== null ? { owner: username } : {}),
       kind: "plain",
       createdAt: new Date().toISOString(),
-      expiresAt: null, // the Default Pad has no TTL and is always present
+      expiresAt: null,
     };
-    this.#save();
+    this.#index.pads[slug] = pad;
+    try {
+      this.#save();
+    } catch (error) {
+      delete this.#index.pads[slug];
+      throw error;
+    }
+    return pad;
   }
 
   /**

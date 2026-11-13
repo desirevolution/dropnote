@@ -1,11 +1,10 @@
 import { createHash } from "node:crypto";
 import { secureEquals } from "./secure-compare.ts";
 import { bearerTokenOf, type PinAuthority } from "./pin.ts";
-import { DEFAULT_PAD_SLUG, type GrantRole, type PadRecord } from "./store.ts";
+import { type GrantRole, type PadRecord } from "./store.ts";
 
 export function padRole(pad: PadRecord, username: string | null): GrantRole | "owner" | null {
   if (username === null || pad.owner === username) return "owner";
-  if (pad.slug === DEFAULT_PAD_SLUG) return "edit";
   return pad.grants?.find((grant) => grant.username === username)?.role ?? null;
 }
 

@@ -63,7 +63,7 @@ export const PAD_CSS = `
   #note[data-font-size="small"] { --note-font-size: .84rem; }
   #note[data-font-size="large"] { --note-font-size: 1.15rem; }
   #note .cm-scroller { font: var(--note-font-size, .96rem)/1.65 "IBM Plex Mono", ui-monospace, "DejaVu Sans Mono", monospace; }
-  #note .cm-content { padding: 1rem 1.1rem; caret-color: var(--fg); }
+  #note .cm-content { align-self: stretch; padding: 1rem 1.1rem; caret-color: var(--fg); }
   #note .cm-line { padding: 0; }
   .note-card:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
   #note .cm-editor.cm-focused, #note .cm-content:focus-visible { outline: none; }
@@ -133,7 +133,17 @@ export const PAD_CSS = `
   #new-pad-form .new-pad-encrypted { display: flex; align-items: flex-start; gap: .6rem; padding: .65rem; background: var(--panel); border-radius: .45rem; }
   .new-pad-encrypted input { accent-color: var(--accent); margin: .3rem 0 0; }
   .new-pad-encrypted small { display: block; font-weight: 400; color: var(--muted); }
-  #new-pad-dialog, #pad-qr-dialog { width: min(34rem, calc(100vw - 2rem)); }
+  #new-pad-dialog, #pad-qr-dialog, #space-access-dialog { width: min(34rem, calc(100vw - 2rem)); }
+  #space-access-requests { margin-block-end: 1rem; }
+  #space-access-requests h3 { margin: 0 0 .5rem; font-size: 1rem; }
+  #space-access-request-list li { display: grid; gap: .45rem; padding: .6rem 0; }
+  .request-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+  #space-access-form { display: grid; gap: .7rem; }
+  #space-access-form label { display: grid; gap: .25rem; }
+  #space-access-form button { justify-self: start; }
+  #space-access-status { margin-block: .65rem; }
+  #space-access-status:empty { margin: 0; }
+  .request-count { min-inline-size: 1.4em; padding-inline: .25em; border-radius: 1em; background: var(--accent); color: var(--on-accent); text-align: center; }
   #my-pads-list, .account-list { max-height: 45vh; overflow-y: auto; }
   #my-pads-list li, .account-list li { display: flex; align-items: center; justify-content: space-between; gap: .5rem; border-bottom: 1px solid var(--border); padding: .4rem .25rem; }
   #owned-spaces-list li { flex-wrap: wrap; }

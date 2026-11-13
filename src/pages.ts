@@ -4,7 +4,7 @@
  * editor) and its file list. Pad creation and local navigation live in
  * dialogs, wired by /js/editor.bundle.js (see frontend/).
  */
-import { DEFAULT_PAD_SLUG, type PadRecord } from "./store.ts";
+import { DEFAULT_PAD_SLUG, isDefaultPad, publicPadSlug, type PadRecord } from "./store.ts";
 import { PAD_CSS } from "./pad-styles.ts";
 import type { Language } from "./locale.ts";
 import { translate } from "./translations.ts";
@@ -98,8 +98,8 @@ export function renderPadPage(pad: PadRecord, options: PadPageOptions): string {
   const t = (message: string, values?: Record<string, string | number>) => escapeHtml(translate(language, message, values));
   const username = options.username && escapeHtml(options.username);
   const canManage = options.canManage ?? true;
-  const fixed = pad.slug === DEFAULT_PAD_SLUG;
-  const heading = spaceLabel(pad.slug, pad.displayName);
+  const fixed = isDefaultPad(pad.slug);
+  const heading = spaceLabel(publicPadSlug(pad.slug), pad.displayName);
   const tag = options.releaseTag;
   const releaseTag = tag && tag.length <= 129 && RELEASE_TAG_PATTERN.test(tag) ? tag : null;
   const defaultSpace = `<div class="shared-space-entry">
@@ -109,12 +109,12 @@ export function renderPadPage(pad: PadRecord, options: PadPageOptions): string {
   // The Note content lives in the Pad's Live-Sync document (ADR-0002) and is
   // replayed into the editor by the client; the page itself starts empty.
   const metadata = JSON.stringify({
-    slug: pad.slug,
+    slug: publicPadSlug(pad.slug),
     displayName: pad.displayName ?? null,
     createdAt: pad.createdAt,
     expiresAt: pad.expiresAt,
     encrypted: pad.kind === "encrypted",
-    path: pad.slug === DEFAULT_PAD_SLUG ? "/default" : `${options.padPath}/${pad.slug}`,
+    path: fixed ? "/default" : `${options.padPath}/${pad.slug}`,
     encryption: pad.encryption && { salt: pad.encryption.salt, check: pad.encryption.check },
     pinProtected: pad.pin !== undefined,
     ...(username ? { username: options.username, canEdit: options.canEdit } : {}),
@@ -143,7 +143,7 @@ ${PAD_CSS}
     </div>
     <nav class="actions" aria-label="${t("Spaces")}">
       <a href="/" id="home-link" class="home-link">${icon("home")} ${t("Home")}</a>
-      <button type="button" data-open-dialog="owned-spaces-dialog" aria-haspopup="dialog">${t("My spaces")}</button>
+      <button type="button" data-open-dialog="owned-spaces-dialog" aria-haspopup="dialog">${t("My spaces")}${username ? ` <span id="access-request-badge" class="request-count" role="img" hidden></span>` : ""}</button>
       ${username ? `<button type="button" data-open-dialog="my-pads-dialog" aria-haspopup="dialog">${t("Bookmarks")}</button>` : ""}
       <button type="button" id="theme-toggle" data-light-label="${t("Light mode")}" data-dark-label="${t("Dark mode")}" class="icon-button" aria-label="${t("Toggle dark or light mode")}">${icon("moon", "theme-moon")}${icon("sun", "theme-sun")}</button>
       ${username ? `<span class="account-name" title="${username}">${username}</span>` : ""}
@@ -158,7 +158,7 @@ ${PAD_CSS}
       <div class="pad-meta">
         <span class="pad-mode${isEncrypted ? " encrypted" : ""}">${icon(isEncrypted ? "lock" : "unlock")} ${t(isEncrypted ? "End-to-end encrypted" : "Unencrypted")}</span>
         ${pad.pin ? `<span>${t("Editing protected by PIN")}</span>` : ""}
-        ${pad.slug !== DEFAULT_PAD_SLUG ? '<time id="expires-at" hidden></time>' : ""}
+        ${!fixed ? '<time id="expires-at" hidden></time>' : ""}
         ${username && !canManage && !fixed && pad.owner ? `<span>${t("Shared by {name}", { name: pad.owner })} · ${t(options.canEdit ? "Can edit" : "Can read")}</span>` : ""}
         <span id="start-pad-marker" class="start-marker" hidden>${icon("home")} ${t("Start page")}</span>
       </div>
@@ -371,7 +371,7 @@ ${PAD_CSS}
       <h3 id="space-access-requests-title">${t("Access requests")}</h3>
       <ul class="account-list" id="space-access-request-list"></ul>
     </section>
-    <form id="space-access-form" class="passphrase-form">
+    <form id="space-access-form">
       <label>${t("Username")} <input name="username" required maxlength="128" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
       <label>${t("Permission")}
         <select name="role"><option value="read">${t("Can read")}</option><option value="edit">${t("Can edit")}</option></select>

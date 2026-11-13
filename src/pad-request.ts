@@ -29,8 +29,9 @@ export function getPadOrAnswer404(
   res: Response,
   answer: NoPadAnswer = jsonNoPad,
 ): PadRecord | undefined {
-  const pad = store.getLivePad(slug);
-  if (!pad || !padRole(pad, requestUsername(res))) {
+  const username = requestUsername(res);
+  const pad = store.resolvePad(slug, username);
+  if (!pad || !padRole(pad, username)) {
     answer(res);
     return undefined;
   }

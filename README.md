@@ -78,7 +78,7 @@ Browser bookmarks, start-page choices and remembered keys from the previous buil
 | Rename a space | **⋯ → Rename space** changes the display name in the space, **My spaces** and bookmarks. Links and QR codes still use the original address. This action requires the same permissions and unlocks as other space management actions. |
 | Download the note | **⋯ → Download text (.txt)** saves a local UTF-8 text file named after the space address and the Unix timestamp in milliseconds, for example `project-notes-1794552905123.txt`. The downloaded file is plaintext, including when the note is encrypted in Dropnote. |
 | Share a screenshot or file | Use **Add files** in the Note tab, click or drop files on **Choose files** in the Files tab, or paste an image into the editor or anywhere in the Files tab. Transfers and retries are visible in both tabs. The file list shows the newest uploads first. Use **Copy files link** to open the Files tab directly. Open an image preview and choose **Copy image** to copy the full-resolution image as PNG. Clipboard access depends on browser support and permission. |
-| Clear the shared workspace | **⋯ → Clear note** and **⋯ → Remove all files** are separate confirmed actions. |
+| Clear Default | **⋯ → Clear note** and **⋯ → Remove all files** are separate confirmed actions. |
 | Manage an additional space | **⋯ → Change expiry** and **⋯ → Delete space** require write access. In multiuser mode these actions are available to the owner. The default expiry is seven days unless configured otherwise. |
 
 The **Paste text** button appends the clipboard text, starting on a new line when needed. If the browser blocks clipboard access, the editor is focused at the end so you can use your device’s Paste action.
@@ -234,9 +234,11 @@ Dropnote uses case-sensitive login names up to 128 characters with letters `A–
 | Owner | Open, edit, grant or revoke access, change expiry and delete the space. |
 | Can read | Read the note and download files. |
 | Can edit | Read and edit the note, upload files and remove files. |
-| Authenticated account at `/default` | Open and edit the permanent shared space. |
+| Authenticated account at `/default` | Open and edit the account’s own permanent Default space. |
 
-New spaces start private. A signed-in recipient without permission can choose **Request access** when opening a link. The response is the same for missing and private spaces. Dropnote keeps one open request per user and space. The owner sees request counts in **My spaces** and can allow reading, allow editing or decline in **Manage access**. After approval the same link opens the space. Owners can also grant or remove permissions directly. Removing a grant disconnects that user's open editor and prevents new requests. A downloaded file or previously copied text stays with its recipient. Encrypted spaces still require their passphrase. If the space has an editing PIN, editors and owners still need it to write. Bookmarks, the browser's start page and remembered encryption keys are scoped to the active login.
+Each account has its own Default note and files. The address `/default` opens the signed-in account’s space. If upgrading from a version with a shared Default, its data stays in the data directory. Personal Defaults start empty.
+
+New spaces start private. A signed-in recipient without permission can choose **Request access** when opening a link. The response is the same for missing and private spaces. Dropnote keeps one open request per user and space. The badge on **My spaces** shows the total number of open requests and refreshes every 30 seconds while the page is visible. The owner sees counts per space in **My spaces** and can allow reading, allow editing or decline in **Manage access**. After approval the same link opens the space. Owners can also grant or remove permissions directly. Removing a grant disconnects that user's open editor and prevents new requests. A downloaded file or previously copied text stays with its recipient. Encrypted spaces still require their passphrase. If the space has an editing PIN, editors and owners still need it to write. Bookmarks, the browser's start page and remembered encryption keys are scoped to the active login.
 
 ### Nginx transport example
 

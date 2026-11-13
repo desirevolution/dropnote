@@ -21,7 +21,7 @@ _Avoid_: upload, file, blob
 
 **Default** (internally, **Default Pad**)
 
-The permanent, unencrypted workspace at `/default`. Anyone with instance access can edit it.
+The permanent, unencrypted workspace at `/default`. In multiuser mode, each account has its own Default. In single-user mode, instance access allows editing.
 _Avoid_: home pad, main pad
 
 **Display name**

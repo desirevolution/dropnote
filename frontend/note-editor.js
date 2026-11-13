@@ -145,6 +145,17 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
   });
   onText(note.toString());
 
+  function focusEnd() {
+    if (!writable) return;
+    editor.dispatch({ selection: { anchor: editor.state.doc.length }, scrollIntoView: true });
+    editor.focus();
+  }
+
+  // A tap on empty scroller background should behave like a tap below the last line.
+  editor.scrollDOM.addEventListener("click", (event) => {
+    if (event.button === 0 && event.target === editor.scrollDOM) focusEnd();
+  });
+
   function queueCursor() {
     if (timer) return;
     timer = setTimeout(() => {
@@ -228,11 +239,7 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
       editor.dispatch({ changes: { from: end, insert: separator + text }, userEvent: "input.paste" });
       undoManager.stopCapturing();
     },
-    focusEnd() {
-      if (!writable) return;
-      editor.dispatch({ selection: { anchor: editor.state.doc.length }, scrollIntoView: true });
-      editor.focus();
-    },
+    focusEnd,
     replaceText(text) {
       if (!writable || editor.state.doc.toString() === text) return;
       // Separate this paste from typing on both sides of the undo history.

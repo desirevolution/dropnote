@@ -61,9 +61,9 @@ export function attachmentsRouter({ store, config, pins }: AttachmentDeps): Rout
   return router;
 
   function upload(req: Request, res: Response): void {
-    const slug = req.params.slug as string;
-    const pad = getPadOrAnswer404(store, slug, res);
+    const pad = getPadOrAnswer404(store, req.params.slug as string, res);
     if (!pad) return;
+    const { slug } = pad;
     // On a PIN-protected Pad, attaching is editing — it needs the capability
     // (a Reader only ever downloads). Answered before any byte is read.
     const failure = writeFailure(pad, pins, req.headers, requestUsername(res));
@@ -203,9 +203,9 @@ export function attachmentsRouter({ store, config, pins }: AttachmentDeps): Rout
   }
 
   function download(req: Request, res: Response): void {
-    const slug = req.params.slug as string;
-    const pad = getPadOrAnswer404(store, slug, res, noSuchAttachment);
+    const pad = getPadOrAnswer404(store, req.params.slug as string, res, noSuchAttachment);
     if (!pad) return;
+    const { slug } = pad;
     if (!hasPadProof(pad, req.headers["x-pad-proof"])) {
       res.status(403).json({ error: "Unlock the encrypted Pad before downloading files" });
       return;
@@ -238,9 +238,9 @@ export function attachmentsRouter({ store, config, pins }: AttachmentDeps): Rout
   }
 
   function remove(req: Request, res: Response): void {
-    const slug = req.params.slug as string;
-    const pad = getPadOrAnswer404(store, slug, res, noSuchAttachment);
+    const pad = getPadOrAnswer404(store, req.params.slug as string, res, noSuchAttachment);
     if (!pad) return;
+    const { slug } = pad;
     const blobId = req.params.blobId as string | undefined;
     if (typeof blobId !== "string" || !BLOB_ID_PATTERN.test(blobId) || !pad.blobs?.[blobId]) {
       noSuchAttachment(res);

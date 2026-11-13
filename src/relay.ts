@@ -59,7 +59,7 @@ export class SyncRelay {
         rejectUpgrade(socket, 404, "Unknown sync endpoint");
         return;
       }
-      const pad = this.#store.getLivePad(slug);
+      const pad = this.#store.resolvePad(slug, username);
       if (!pad || !padRole(pad, username)) {
         rejectUpgrade(socket, 404, `No Pad lives at this address`);
         return;
@@ -72,7 +72,7 @@ export class SyncRelay {
       this.#wss.handleUpgrade(request, socket, head, (client) => {
         this.#wss.emit("connection", client);
         try {
-          this.#serve(slug, token, client, username);
+          this.#serve(pad.slug, token, client, username);
         } catch (error) {
           console.error("Pad replay could not start:", error);
           client.close(1011, "Pad replay unavailable");

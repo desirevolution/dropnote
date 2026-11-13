@@ -12,17 +12,46 @@ async function getJson(url, options) {
   return result;
 }
 
+function requestLabel(count) {
+  return t(count === 1 ? "{count} access request" : "{count} access requests", { count });
+}
+
 export function initSpaceAccess(api, deleteSpace) {
   const openAccess = document.querySelector('[data-open-dialog="space-access-dialog"]');
   const owned = $("owned-spaces-list");
   const ownedStatus = $("owned-spaces-status");
+  const badge = $("access-request-badge");
   let loadNumber = 0;
+  let requestNumber = 0;
+
+  async function loadOwnedSpaces() {
+    const request = ++requestNumber;
+    const { spaces } = await getJson("/api/my-spaces", { signal: AbortSignal.timeout(10_000) });
+    if (badge && request === requestNumber) {
+      const count = spaces.reduce((total, space) => total + space.accessRequestCount, 0);
+      badge.hidden = count === 0;
+      badge.textContent = count ? String(count) : "";
+      badge.title = requestLabel(count);
+      badge.setAttribute("aria-label", badge.title);
+    }
+    return spaces;
+  }
+
+  function refreshBadge() {
+    if (badge && !document.hidden) void loadOwnedSpaces().catch(() => {});
+  }
+
+  if (badge) {
+    refreshBadge();
+    document.addEventListener("visibilitychange", refreshBadge);
+    window.setInterval(refreshBadge, 30_000);
+  }
   document.querySelector('[data-open-dialog="owned-spaces-dialog"]').addEventListener("click", async () => {
     const load = ++loadNumber;
     owned.replaceChildren();
     ownedStatus.textContent = t("Loading…");
     try {
-      const { spaces } = await getJson("/api/my-spaces");
+      const spaces = await loadOwnedSpaces();
       if (load !== loadNumber) return;
       ownedStatus.textContent = spaces.length ? "" : t("You haven't created any spaces yet.");
       spaces.sort((a, b) => Number(isStartPad(b)) - Number(isStartPad(a)));
@@ -44,7 +73,7 @@ export function initSpaceAccess(api, deleteSpace) {
         if (space.accessRequestCount > 0) {
           const requests = document.createElement("a");
           requests.href = `${space.path}#space-access-dialog`;
-          requests.textContent = t(space.accessRequestCount === 1 ? "{count} access request" : "{count} access requests", { count: space.accessRequestCount });
+          requests.textContent = requestLabel(space.accessRequestCount);
           requests.setAttribute("aria-label", t("{label} for {name}", { label: requests.textContent, name: link.textContent }));
           if (openAccess && location.pathname === space.path) {
             requests.addEventListener("click", (event) => {
@@ -66,6 +95,7 @@ export function initSpaceAccess(api, deleteSpace) {
           try {
             if (!await deleteSpace(space) || load !== loadNumber) return;
             row.remove();
+            refreshBadge();
             ownedStatus.textContent = owned.children.length ? "" : t("You haven't created any spaces yet.");
           } catch (error) {
             if (load === loadNumber) ownedStatus.textContent = error.message || t("Could not delete this space.");
@@ -103,7 +133,7 @@ export function initSpaceAccess(api, deleteSpace) {
         const name = document.createElement("span");
         const actions = document.createElement("div");
         name.textContent = username;
-        actions.className = "dialog-actions";
+        actions.className = "request-actions";
         for (const [label, role] of [["Allow reading", "read"], ["Allow editing", "edit"], ["Decline", null]]) {
           const button = document.createElement("button");
           button.type = "button";
@@ -134,6 +164,7 @@ export function initSpaceAccess(api, deleteSpace) {
         row.append(name, remove);
         return row;
       }));
+      if (success) refreshBadge();
       status.textContent = success || (grants.length ? "" : t("No one else has access."));
     } catch (error) {
       status.textContent = error.message || t("Access could not be updated.");
