@@ -381,6 +381,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
       const access = username ? {
         username,
         action: `/api/pads/${encodeURIComponent(slug)}/access-requests${filesView}`,
+        checkPath: `/api/pads/${encodeURIComponent(slug)}`,
         requested: req.query.access === "requested",
         spacePath: `${config.padPath}/${encodeURIComponent(slug)}${filesView}`,
       } : undefined;

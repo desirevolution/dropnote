@@ -376,7 +376,7 @@ ${PAD_CSS}
       <label>${t("Permission")}
         <select name="role"><option value="read">${t("Can read")}</option><option value="edit">${t("Can edit")}</option></select>
       </label>
-      <button type="submit" class="primary">${t("Save access")}</button>
+      <button type="submit" class="primary" disabled>${t("Save access")}</button>
     </form>
     <p id="space-access-status" role="status"></p>
     <ul class="account-list" id="space-access-list"></ul>
@@ -488,8 +488,56 @@ function describeDuration(seconds: number, language: Language): string {
   return format(seconds, "second");
 }
 
+const ACCESS_WAIT_SCRIPT = `
+  (() => {
+    const link = document.getElementById("check-space-access");
+    const destination = new URL(link.href);
+    destination.hash = location.hash;
+    link.href = destination.href;
+    let running = false;
+    let timer;
+    let nextCheck = 0;
+
+    function schedule() {
+      clearTimeout(timer);
+      if (running || document.hidden) return;
+      timer = setTimeout(checkAccess, Math.max(0, nextCheck - Date.now()));
+    }
+
+    async function checkAccess() {
+      if (running || document.hidden) return;
+      running = true;
+      let delay = 10_000;
+      try {
+        const response = await fetch(link.dataset.checkPath, {
+          method: "HEAD",
+          cache: "no-store",
+          redirect: "error",
+          signal: AbortSignal.timeout(8_000),
+        });
+        if (response.ok) {
+          location.replace(link.href);
+          return;
+        }
+        if (response.status === 429) {
+          const seconds = Number(response.headers.get("retry-after"));
+          if (Number.isFinite(seconds)) delay = Math.max(delay, seconds * 1_000);
+        }
+      } catch {
+        // The manual link remains available while the network or session recovers.
+      }
+      nextCheck = Date.now() + delay;
+      running = false;
+      schedule();
+    }
+
+    document.addEventListener("visibilitychange", schedule);
+    schedule();
+  })();
+`;
+
 /** The page shown for a Slug that has no Pad (expired or never existed). */
-export function renderNotFoundPage(access?: { username: string; action: string; requested: boolean; spacePath: string }, language: Language = "en"): string {
+export function renderNotFoundPage(access?: { username: string; action: string; checkPath: string; requested: boolean; spacePath: string }, language: Language = "en"): string {
   const t = (message: string, values?: Record<string, string>) => escapeHtml(translate(language, message, values));
   return `<!doctype html>
 <html lang="${language}">
@@ -512,7 +560,9 @@ ${access ? `<p>${t("Signed in as {name}.", { name: access.username })}</p>` : ""
 ${access
   ? access.requested
     ? `<p role="status">${t("If the space is available, your request has been sent to its owner.")}</p>
-<p><a href="${escapeHtml(access.spacePath)}">${t("Try opening the space again")}</a></p>`
+<p>${t("This page checks for access and opens the space once it is available.")}</p>
+<p><a id="check-space-access" href="${escapeHtml(access.spacePath)}" data-check-path="${escapeHtml(access.checkPath)}">${t("Try opening the space again")}</a></p>
+<script>${ACCESS_WAIT_SCRIPT}</script>`
     : `<p>${t("This space may be unavailable or require permission to open.")}</p>
 <form method="post" action="${escapeHtml(access.action)}"><button type="submit">${t("Request access")}</button></form>`
   : `<p>${t("There’s no space at this address. It may have expired, been deleted, or never existed.")}</p>`}

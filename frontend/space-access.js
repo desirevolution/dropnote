@@ -120,11 +120,18 @@ export function initSpaceAccess(api, deleteSpace) {
   const submit = form.querySelector('button[type="submit"]');
   const accessApi = `${api}/access`;
   let busy = false;
+  const usernameInput = form.elements.namedItem("username");
+
+  function updateSubmit() {
+    submit.disabled = busy || !usernameInput.value.trim();
+  }
+  usernameInput.addEventListener("input", updateSubmit);
+  updateSubmit();
 
   async function manage(operation, success) {
     if (busy) return;
     busy = true;
-    submit.disabled = true;
+    updateSubmit();
     status.textContent = t("Working…");
     try {
       const { grants, requests } = await operation();
@@ -170,7 +177,7 @@ export function initSpaceAccess(api, deleteSpace) {
       status.textContent = error.message || t("Access could not be updated.");
     } finally {
       busy = false;
-      submit.disabled = false;
+      updateSubmit();
     }
   }
 
@@ -191,8 +198,9 @@ export function initSpaceAccess(api, deleteSpace) {
   });
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    const data = new FormData(form);
-    void setGrant(data.get("username").trim(), data.get("role"));
+    const username = usernameInput.value.trim();
+    if (busy || !username) return;
+    void setGrant(username, form.elements.namedItem("role").value);
   });
   if (location.hash === "#space-access-dialog") openAccess.click();
 }

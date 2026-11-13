@@ -120,6 +120,7 @@ const german: Record<string, string> = {
   "Signed in as {name}.": "Angemeldet als {name}.",
   "Space unavailable": "Space nicht verfügbar",
   "If the space is available, your request has been sent to its owner.": "Falls der Space verfügbar ist, wurde die Anfrage an die Person gesendet, der er gehört.",
+  "This page checks for access and opens the space once it is available.": "Diese Seite prüft die Freigabe und öffnet den Space, sobald du Zugriff hast.",
   "Try opening the space again": "Space erneut öffnen",
   "This space may be unavailable or require permission to open.": "Dieser Space ist möglicherweise nicht verfügbar oder erfordert eine Freigabe.",
   "Request access": "Zugriff anfragen",

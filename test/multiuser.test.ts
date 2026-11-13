@@ -97,6 +97,7 @@ test("private spaces have owner-only management and revocable read and edit role
   const ownerBody = await ownerPage.text();
   assert.match(ownerBody, /data-open-dialog="owned-spaces-dialog"[^>]*>[^<]*<span id="access-request-badge"/);
   assert.match(ownerBody, /Manage access/);
+  assert.match(ownerBody, /<button type="submit" class="primary" disabled>Save access<\/button>/);
   assert.doesNotMatch(ownerBody, /id="remember-pad"/);
   const bytes = Buffer.from("private file");
   const uploaded = await request(`${api}/attachments`, owner, { method: "POST", body: bytes });
@@ -235,7 +236,9 @@ test("signed-in visitors can request access privately and the owner can grant or
   const requestsPath = `${api}/access-requests`;
   const visitorPage = await request(pagePath, collaborator);
   assert.equal(visitorPage.status, 404);
-  assert.match(await visitorPage.text(), /method="post".*Request access/);
+  const requestPage = await visitorPage.text();
+  assert.match(requestPage, /method="post".*Request access/);
+  assert.doesNotMatch(requestPage, /id="check-space-access"/);
   const submit = (path: string, username?: string) => request(path, username, {
     method: "POST", headers: { origin }, redirect: "manual",
   });
@@ -254,6 +257,10 @@ test("signed-in visitors can request access privately and the owner can grant or
     assert.equal(confirmation.status, 404);
     assert.match(await confirmation.text(), /If the space is available, your request has been sent to its owner\./);
   }
+
+  const filesWaiting = await (await request(`${pagePath}?access=requested&view=files`, collaborator)).text();
+  assert.ok(filesWaiting.includes(`id="check-space-access" href="${pagePath}?view=files" data-check-path="${api}"`));
+  assert.equal((await request(api, collaborator, { method: "HEAD" })).status, 404);
 
   // A client cannot nominate a different user, and repeated submissions are deduplicated.
   const duplicate = await request(requestsPath, collaborator, {
@@ -283,6 +290,8 @@ test("signed-in visitors can request access privately and the owner can grant or
   const renewed = await (await request(`${api}/access`, owner)).json();
   const approved = await json(`${requestsPath}/${renewed.requests[0].id}`, owner, "PUT", { role: "read" });
   assert.deepEqual(await approved.json(), { grants: [{ username: collaborator, role: "read" }], requests: [] });
+  assert.equal((await request(api, collaborator, { method: "HEAD" })).status, 200);
+  assert.equal((await request(api, "charlie", { method: "HEAD" })).status, 404);
   assert.equal((await request(pagePath, collaborator)).status, 200);
   assert.equal((await control(socket(slug, collaborator), "replay-done")).writable, false);
 
