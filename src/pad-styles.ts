@@ -65,7 +65,8 @@ export const PAD_CSS = `
   #note .cm-scroller { font: var(--note-font-size, .96rem)/1.65 "IBM Plex Mono", ui-monospace, "DejaVu Sans Mono", monospace; }
   #note .cm-content { padding: 1rem 1.1rem; caret-color: var(--fg); }
   #note .cm-line { padding: 0; }
-  #note .cm-focused { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .note-card:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #note .cm-editor.cm-focused, #note .cm-content:focus-visible { outline: none; }
   #note .cm-placeholder { color: var(--muted); }
   .remote-cursor { display: inline; position: relative; border-left: 2px solid var(--cursor); margin-inline: -1px; pointer-events: none; }
   .remote-cursor-name { position: absolute; z-index: 1; inset-block-end: 100%; inset-inline-start: -2px; max-inline-size: 10rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--surface); color: var(--fg); border: 1px solid var(--cursor); border-radius: 3px; padding: 0 .25rem; font: 600 .7rem/1.2 system-ui, sans-serif; }
