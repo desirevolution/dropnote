@@ -27,6 +27,8 @@ COPY src/ src/
 # Pre-create the data directory with the runtime user's ownership so an
 # anonymous volume starts out writable without a root step.
 RUN mkdir -p /app/data && chown node:node /app/data
+ARG DROPNOTE_RELEASE_TAG=dev
+ENV DROPNOTE_RELEASE_TAG=${DROPNOTE_RELEASE_TAG}
 USER node
 EXPOSE 3000
 VOLUME ["/app/data"]

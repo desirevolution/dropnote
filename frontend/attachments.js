@@ -91,23 +91,29 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
       if (event.dataTransfer.types.includes("Files")) event.preventDefault();
     }, { signal });
   }
-  for (const target of [$("note"), $("files-card")]) {
-    target.addEventListener("paste", (event) => {
-      if (!canEdit) return;
-      const clipboard = event.clipboardData;
-      const files = clipboard?.files.length ? Array.from(clipboard.files) : Array.from(clipboard?.items ?? [])
-        .filter((item) => item.kind === "file").map((item) => item.getAsFile());
-      const images = files.filter((file) => file?.type.startsWith("image/"));
-      if (!images.length) return;
-      event.preventDefault();
-      const timestamp = new Date().toISOString().slice(0, 19).replace("T", "_").replaceAll(":", "-");
-      uploadFiles(images.map((file, index) => {
-        if (file.name && !/^image\.(png|jpe?g|webp)$/i.test(file.name)) return file;
-        const extension = imageExtensions.get(file.type) ?? "img";
-        return new File([file], `image-${timestamp}${index ? `-${index + 1}` : ""}.${extension}`, { type: file.type });
-      }));
-    }, { capture: true, signal });
-  }
+  const note = $("note");
+  const filesPanel = $("files-card");
+  document.addEventListener("paste", (event) => {
+    if (!canEdit || event.defaultPrevented || document.querySelector("dialog[open]")) return;
+    const target = event.target;
+    if (!note.contains(target)) {
+      if (filesPanel.hidden) return;
+      if (target instanceof Element &&
+          (target.isContentEditable || target.closest("input, textarea, select, dialog"))) return;
+    }
+    const clipboard = event.clipboardData;
+    const files = clipboard?.files.length ? Array.from(clipboard.files) : Array.from(clipboard?.items ?? [])
+      .filter((item) => item.kind === "file").map((item) => item.getAsFile());
+    const images = files.filter((file) => file?.type.startsWith("image/"));
+    if (!images.length) return;
+    event.preventDefault();
+    const timestamp = new Date().toISOString().slice(0, 19).replace("T", "_").replaceAll(":", "-");
+    uploadFiles(images.map((file, index) => {
+      if (file.name && !/^image\.(png|jpe?g|webp)$/i.test(file.name)) return file;
+      const extension = imageExtensions.get(file.type) ?? "img";
+      return new File([file], `image-${timestamp}${index ? `-${index + 1}` : ""}.${extension}`, { type: file.type });
+    }));
+  }, { capture: true, signal });
 
   imageDialog.addEventListener("close", () => {
     if (!imageDialog.open) closePreview();

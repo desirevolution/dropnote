@@ -42,6 +42,8 @@ Push the project to [desirevolution/dropnote](https://github.com/desirevolution/
 
 Release `v0.1.0` publishes `ghcr.io/desirevolution/dropnote:0.1.0`. If GitHub reports it as the latest stable release, the workflow also points `:latest` at the same multi-platform image. Prereleases and older releases publish only their version tag. To follow the stable release automatically with Compose, set `DROPNOTE_VERSION=latest` in `.env` and pull before restarting.
 
+The header shows the release tag built into the running image. The version links to its GitHub release. Local builds show `dev`.
+
 GHCR package visibility is managed under **Packages**. Public images can be pulled anonymously. For a private image, sign in to `ghcr.io` on the deployment machine with a classic personal access token that has `read:packages` and access to the package. See [GitHub Container Registry authentication](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-to-the-container-registry).
 
 Dependabot checks npm dependencies, the Docker base image and workflow actions weekly.
@@ -67,15 +69,17 @@ Browser bookmarks, start-page choices and remembered keys from the previous buil
 
 | Task | In the app |
 | --- | --- |
-| Open the shared workspace | **Open shared space** goes to `/default`. The site root opens this space by default. |
-| Choose what opens at the site root | Use **⋯ → Set as start page** on any space. The choice is saved in this browser. |
+| Open the shared workspace | Select **Shared space** in **My spaces**. In single-user mode, look in **Saved spaces**. This opens `/default` directly. |
+| Open or change your start page | **Home** opens your start page. Use **⋯ → Set as start page** to change it or **Reset start page** on the selected space to return to the shared workspace. The old start page stays in **Saved spaces**. |
 | Create a space | **New space** offers encryption and expiry. **More options** has the optional name and editing PIN. A generated address looks like `/p/amber-otter`. |
 | Return to a space | **Saved spaces** shows bookmarks. In single-user mode it also lists spaces created in this browser until they are deleted or expire. In multiuser mode, **My spaces** lists the spaces you own across devices. |
 | Share a link | Use **Copy link** or **QR code**. In multiuser mode, grant access under **⋯ → Manage access** or let the recipient request it when opening the link. Give recipients the passphrase separately for encrypted spaces. |
 | Edit or copy the note | Use the full-width **Note** tab and **Copy text**. Spaces containing only files open the **Files** tab. |
-| Share a screenshot or file | Use **Add files** in the Note tab, click or drop files on **Choose files** in the Files tab, or paste an image in either tab. Transfers and retries are visible in both tabs. The file list shows the newest uploads first. Use **Copy files link** to open the Files tab directly. Open an image preview and choose **Copy image** to copy the full-resolution image as PNG. Clipboard access depends on browser support and permission. |
+| Share a screenshot or file | Use **Add files** in the Note tab, click or drop files on **Choose files** in the Files tab, or paste an image into the editor or anywhere in the Files tab. Transfers and retries are visible in both tabs. The file list shows the newest uploads first. Use **Copy files link** to open the Files tab directly. Open an image preview and choose **Copy image** to copy the full-resolution image as PNG. Clipboard access depends on browser support and permission. |
 | Clear the shared workspace | **⋯ → Clear note** and **⋯ → Remove all files** are separate confirmed actions. |
 | Manage an additional space | **⋯ → Change expiry** and **⋯ → Delete space** require write access. In multiuser mode these actions are available to the owner. The default expiry is seven days unless configured otherwise. |
+
+With the **Note** tab selected, paste plain text outside the editor to fill an empty note or confirm replacing an existing note. Press Escape to cancel. A replacement is one undo step. With the cursor inside the editor, paste inserts text at the cursor or replaces the current selection.
 
 The note saves automatically and shows other active cursors. The editor shows **Connected** while live sync is available. If the connection drops or a write goes unacknowledged for 10 seconds, Dropnote reconnects and retries unconfirmed changes. Loaded content stays visible, and **Changes pending** appears while editing is blocked and changes are still queued.
 

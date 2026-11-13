@@ -69,13 +69,23 @@ export interface PadPageOptions {
   username?: string | null;
   canManage?: boolean;
   canEdit?: boolean;
+  releaseTag?: string;
 }
+
+const PROJECT_URL = "https://github.com/desirevolution/dropnote";
+const RELEASE_TAG_PATTERN = /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$/;
 
 export function renderPadPage(pad: PadRecord, options: PadPageOptions): string {
   const username = options.username && escapeHtml(options.username);
   const canManage = options.canManage ?? true;
   const fixed = pad.slug === DEFAULT_PAD_SLUG;
   const heading = spaceLabel(pad.slug);
+  const tag = options.releaseTag;
+  const releaseTag = tag && tag.length <= 129 && RELEASE_TAG_PATTERN.test(tag) ? tag : null;
+  const sharedSpace = `<div class="shared-space-entry">
+      <a href="/default">Shared space</a>
+      <span id="shared-start-marker" class="my-pad-detail" hidden>Start page</span>
+    </div>`;
   // The Note content lives in the Pad's Live-Sync document (ADR-0002) and is
   // replayed into the editor by the client; the page itself starts empty.
   const metadata = JSON.stringify({
@@ -104,8 +114,12 @@ ${PAD_CSS}
 <body>
 <header class="topbar">
   <div class="topbar-inner">
-    <a class="brand" href="/"><span class="brand-mark">${icon("pad")}</span>Dropnote</a>
+    <div class="brand-group">
+      <a class="brand" href="${PROJECT_URL}" title="Dropnote on GitHub" aria-label="Dropnote on GitHub"><span class="brand-mark">${icon("pad")}</span>Dropnote</a>
+      ${releaseTag ? `<a class="release-version" href="${PROJECT_URL}/releases/tag/${escapeHtml(releaseTag)}" aria-label="Dropnote release ${escapeHtml(releaseTag)}">${escapeHtml(releaseTag)}</a>` : '<span class="release-version">dev</span>'}
+    </div>
     <nav class="actions" aria-label="Spaces">
+      <a href="/" id="home-link" class="home-link">${icon("home")} Home</a>
       ${username ? '<button type="button" data-open-dialog="owned-spaces-dialog" aria-haspopup="dialog">My spaces</button>' : ""}
       <button type="button" data-open-dialog="my-pads-dialog" aria-haspopup="dialog">Saved spaces</button>
       <button type="button" id="theme-toggle" class="icon-button" aria-label="Toggle dark or light mode">${icon("moon", "theme-moon")}${icon("sun", "theme-sun")}</button>
@@ -132,7 +146,6 @@ ${PAD_CSS}
       <details class="pad-menu" id="pad-menu">
         <summary aria-label="Space actions" title="Space actions">⋯</summary>
         <div class="menu-items">
-          <a href="/default">Open shared space</a>
           <button type="button" id="remember-pad">Save space</button>
           <button type="button" id="set-start-pad">Set as start page</button>
           ${isEncrypted ? '<button type="button" id="lock-pad" hidden>Lock space</button>' : ""}
@@ -218,6 +231,15 @@ ${PAD_CSS}
     </footer>
   </div>
 
+  <dialog id="replace-note-dialog" aria-labelledby="replace-note-title" aria-describedby="replace-note-description">
+    <h2 id="replace-note-title">Replace note?</h2>
+    <p id="replace-note-description">Replace the entire note with the text from your clipboard?</p>
+    <form method="dialog" class="dialog-actions">
+      <button type="submit" value="cancel" autofocus>Cancel</button>
+      <button type="submit" value="replace" class="primary">Replace note</button>
+    </form>
+  </dialog>
+
   <dialog id="new-pad-dialog" aria-labelledby="new-pad-title">
     <header class="dialog-head">
       <h2 id="new-pad-title">New space</h2>
@@ -259,6 +281,7 @@ ${PAD_CSS}
       <button type="button" class="icon-button quiet" data-close-dialog aria-label="Close">${icon("close")}</button>
     </header>
     <p>${username ? "Bookmarks saved in this browser." : "Spaces created in this browser and bookmarks. Encrypted spaces require their passphrase."}</p>
+    ${username ? "" : sharedSpace}
     <ul id="my-pads-list"></ul>
     <p class="files-empty" id="my-pads-empty" hidden>No saved spaces yet.</p>
     <div class="dialog-actions">
@@ -271,6 +294,7 @@ ${PAD_CSS}
       <h2 id="owned-spaces-title">My spaces</h2>
       <button type="button" class="icon-button quiet" data-close-dialog aria-label="Close">${icon("close")}</button>
     </header>
+    ${sharedSpace}
     <ul class="account-list" id="owned-spaces-list"></ul>
     <p class="files-empty" id="owned-spaces-status" role="status"></p>
   </dialog>` : ""}
@@ -429,6 +453,7 @@ const ICON_PATHS = {
   link: '<path d="M10 13a4 4 0 0 0 6 .4l3-3a4 4 0 1 0-5.7-5.7l-1.7 1.7m2.4 4.6a4 4 0 0 0-6-.4l-3 3a4 4 0 1 0 5.7 5.7l1.7-1.7"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   unlock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.8-1"/>',
+  home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   close: '<path d="m6 6 12 12M18 6 6 18"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M19 5l-1.5 1.5m-11 11L5 19"/>',

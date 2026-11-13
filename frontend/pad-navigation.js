@@ -135,6 +135,8 @@ export function initPadNavigation(metadata) {
   const clear = $("clear-my-pads");
   const remember = $("remember-pad");
   const setStart = $("set-start-pad");
+  const home = $("home-link");
+  const sharedMarker = $("shared-start-marker");
   let checking = false;
 
   function render() {
@@ -166,8 +168,14 @@ export function initPadNavigation(metadata) {
         remove.textContent = "Remove bookmark";
         remove.setAttribute("aria-label", `Remove bookmark for ${spaceLabel(pad.slug)}`);
         remove.addEventListener("click", () => {
+          if (samePad(startPad(), pad)) {
+            if (!window.confirm("Remove this bookmark and reset your start page to Shared space?")) return;
+            if (!saveLocal(startKey, null)) {
+              notice("This browser could not reset the start page.");
+              return;
+            }
+          }
           removeMyPad(storage, pad.url, pad.createdAt);
-          if (samePad(startPad(), pad)) saveLocal(startKey, null);
           render();
         });
         row.append(remove);
@@ -178,22 +186,38 @@ export function initPadNavigation(metadata) {
     clear.hidden = !pads.some((pad) => !pad.createdHere && !samePad(selected, pad));
     remember.disabled = pads.some((pad) => samePad(pad, metadata));
     const personal = samePad(selected, metadata);
-    $("start-pad-marker").hidden = !personal;
-    setStart.disabled = personal || (metadata.slug === "default" && !selected);
-    setStart.textContent = personal ? "Current start page" : "Set as start page";
+    const sharedIsStart = !selected;
+    const currentIsStart = sharedIsStart ? metadata.slug === "default" : personal;
+    $("start-pad-marker").hidden = !currentIsStart;
+    sharedMarker.hidden = !sharedIsStart;
+    if (currentIsStart) home.setAttribute("aria-current", "page");
+    else home.removeAttribute("aria-current");
+    setStart.disabled = metadata.slug === "default" && sharedIsStart;
+    setStart.textContent = personal ? "Reset start page" : "Set as start page";
   }
+
+  home.addEventListener("click", (event) => {
+    if (home.getAttribute("aria-current") === "page" &&
+        !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) event.preventDefault();
+  });
 
   remember.addEventListener("click", () => {
     notice(rememberPad(metadata) ? "Added to Saved spaces." : "This browser could not save the space.");
     render();
   });
   setStart.addEventListener("click", () => {
-    const value = metadata.slug === "default" ? null : JSON.stringify({
+    const previous = startPad();
+    const value = metadata.slug === "default" || samePad(previous, metadata) ? null : JSON.stringify({
       slug: metadata.slug, createdAt: metadata.createdAt, url: new URL(metadata.path, location.origin).href,
     });
     if (saveLocal(startKey, value)) {
-      if (value) rememberPad(metadata);
-      notice("Start page updated for this browser.");
+      const saved = !value || rememberPad(metadata);
+      const title = value ? spaceLabel(metadata.slug) : "Shared space";
+      const storage = localStore();
+      const previousSaved = previous && storage && listMyPads(storage).some((pad) => samePad(previous, pad));
+      const previousMessage = previousSaved ? ` Find ${spaceLabel(previous.slug)} in Saved spaces.` : "";
+      const saveMessage = saved ? "" : " This browser could not add it to Saved spaces.";
+      notice(`${title} is now your start page in this browser.${previousMessage}${saveMessage}`);
     } else {
       notice("This browser could not save the start page.");
     }

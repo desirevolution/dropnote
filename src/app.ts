@@ -62,6 +62,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
   app.use("/api/pads", limitCreations);
 
   const pageOptions = {
+    releaseTag: process.env.DROPNOTE_RELEASE_TAG,
     defaultTtlSeconds: config.defaultTtlSeconds,
     maxTtlSeconds: config.maxTtlSeconds,
     instancePinRequired: config.instancePin !== null,

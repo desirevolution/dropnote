@@ -20,6 +20,10 @@ export const PAD_CSS = `
   .topbar-inner, main { width: min(76rem, calc(100% - 4rem)); margin-inline: auto; }
   .topbar-inner { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 3.5rem; }
   .brand { display: inline-flex; align-items: center; gap: .6rem; color: var(--fg); font-weight: 700; text-decoration: none; white-space: nowrap; }
+  .brand-group { display: flex; align-items: baseline; flex-wrap: wrap; gap: .25rem .6rem; min-width: 0; }
+  .release-version { font-size: .75rem; color: var(--muted); overflow-wrap: anywhere; }
+  .home-link { display: inline-flex; align-items: center; gap: .4rem; padding: .45rem .65rem; color: var(--fg); text-decoration: none; font-size: .875rem; font-weight: 600; border-radius: .25rem; min-height: 2.5rem; }
+  .home-link:hover, .home-link[aria-current="page"] { background: var(--panel); }
   .brand-mark { display: inline-flex; color: var(--muted); }
   .actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
   .account-name { max-inline-size: 10rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-inline: .35rem; font-size: .875rem; }
@@ -166,6 +170,7 @@ export const PAD_CSS = `
   .thumbnail-button img { width: 100%; height: 100%; object-fit: contain; }
   .transfer-error { color: var(--error); font-size: .78rem; overflow-wrap: anywhere; }
   #attachment-uploads li.transfer-failed { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .shared-space-entry { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .4rem; padding: .65rem .25rem; border-bottom: 1px solid var(--border); }
   .my-pad-detail { display: block; color: var(--muted); font-size: .8rem; }
   #my-pads-list .my-pad-info { min-width: 0; }
 

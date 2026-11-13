@@ -18,6 +18,7 @@ const workspace = $("workspace");
 const syncStatus = $("sync-status");
 const syncError = $("sync-error");
 const noteCopy = $("copy-note");
+const replaceNoteDialog = $("replace-note-dialog");
 const uploadNotice = $("upload-notice");
 const uploadNoticeText = $("upload-notice-text");
 const showUpload = $("show-upload");
@@ -41,6 +42,7 @@ let writable = false;
 let connectionState = "connecting";
 let changesPending = false;
 let noteText = "";
+let noteReplacement;
 let fileCount = 0;
 let clearing = false;
 let managing = false;
@@ -80,6 +82,46 @@ $("show-pad-qr").addEventListener("click", async () => {
 $("pad-qr-link").href = padUrl;
 $("pad-qr-link").textContent = padUrl;
 noteCopy.addEventListener("click", () => copyText(noteText, $("note-copy-status"), "Text copied."));
+
+document.addEventListener("paste", (event) => {
+  if (!canReplaceNote() || event.defaultPrevented || document.querySelector("dialog[open]")) return;
+  const target = event.target;
+  if ($("note").contains(target) || (target instanceof Element &&
+      (target.isContentEditable || target.closest("input, textarea, select, dialog")))) return;
+  const clipboard = event.clipboardData;
+  if (clipboard?.files.length || Array.from(clipboard?.items ?? []).some((item) => item.kind === "file")) return;
+  const text = clipboard?.getData("text/plain");
+  if (!text) return;
+
+  event.preventDefault();
+  if (!noteText) {
+    note.replaceText(text);
+    return;
+  }
+  noteReplacement = { text, original: noteText };
+  replaceNoteDialog.showModal();
+});
+
+replaceNoteDialog.querySelector("form").addEventListener("submit", (event) => {
+  if (event.submitter?.value !== "replace" || !canReplaceNote() || !noteReplacement) return;
+  if (noteReplacement.original !== noteText) {
+    notice("The note changed while you were confirming. Paste again to replace it.");
+    return;
+  }
+  note.replaceText(noteReplacement.text);
+});
+replaceNoteDialog.addEventListener("close", () => {
+  if (!replaceNoteDialog.open) noteReplacement = undefined;
+});
+
+function canReplaceNote() {
+  return writable && note && !workspace.hidden && tabs.selected === "note";
+}
+
+function cancelNoteReplacement() {
+  noteReplacement = undefined;
+  if (replaceNoteDialog.open) replaceNoteDialog.close();
+}
 function hideUploadNotice() {
   clearTimeout(uploadNoticeTimer);
   uploadNotice.hidden = true;
@@ -129,6 +171,7 @@ function updateActions() {
 
 function setState(state) {
   writable = state === "writable";
+  if (!writable) cancelNoteReplacement();
   if (state === "readonly") {
     clearTimeout(pinTimer);
     writeToken = null;
@@ -240,6 +283,7 @@ async function openPad(key = null) {
 
 function closeWorkspace() {
   generation += 1;
+  cancelNoteReplacement();
   clearTimeout(pinTimer);
   sync?.stop();
   note?.destroy();

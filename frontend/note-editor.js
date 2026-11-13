@@ -50,6 +50,7 @@ export function initNoteEditor(note, { onText, onCursor }) {
   let writable = false;
   let timer;
   let visibleCursor = false;
+  const undoManager = new Y.UndoManager(note);
   const editor = new EditorView({
     parent: document.querySelector("#note"),
     doc: note.toString(),
@@ -59,7 +60,7 @@ export function initNoteEditor(note, { onText, onCursor }) {
       EditorView.contentAttributes.of({ "aria-labelledby": "note-title", spellcheck: "false", tabindex: "0" }),
       placeholder("Write or paste text here…"),
       keymap.of([...yUndoManagerKeymap, ...defaultKeymap]),
-      yCollab(note, null),
+      yCollab(note, null, { undoManager }),
       markers,
       EditorView.updateListener.of((update) => {
         if (update.docChanged) onText(update.state.doc.toString());
@@ -131,6 +132,16 @@ export function initNoteEditor(note, { onText, onCursor }) {
       editor.dispatch({ effects: editing.reconfigure(editingMode(enabled)) });
       queueCursor();
     },
+    replaceText(text) {
+      if (!writable || editor.state.doc.toString() === text) return;
+      // Separate this paste from typing on both sides of the undo history.
+      undoManager.stopCapturing();
+      editor.dispatch({
+        changes: { from: 0, to: editor.state.doc.length, insert: text },
+        userEvent: "input.paste",
+      });
+      undoManager.stopCapturing();
+    },
     clear() {
       if (!writable || !editor.state.doc.length) return;
       editor.dispatch({ changes: { from: 0, to: editor.state.doc.length } });
@@ -147,6 +158,7 @@ export function initNoteEditor(note, { onText, onCursor }) {
       document.removeEventListener("visibilitychange", queueCursor);
       window.removeEventListener("blur", queueCursor);
       editor.destroy();
+      undoManager.destroy();
     },
   };
 }
