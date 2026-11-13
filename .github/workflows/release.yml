@@ -57,6 +57,7 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: DROPNOTE_RELEASE_TAG=v${{ steps.release.outputs.version }}
           tags: ${{ steps.release.outputs.image }}:${{ steps.release.outputs.version }}
           labels: |
             org.opencontainers.image.title=Dropnote
