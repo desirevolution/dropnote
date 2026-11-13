@@ -377,7 +377,9 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     const slug = req.params.slug as string;
     const pad = getPadOrAnswer404(store, slug, res, (page) => {
       const filesView = req.query.view === "files" ? "?view=files" : "";
-      const access = requestUsername(page) ? {
+      const username = requestUsername(page);
+      const access = username ? {
+        username,
         action: `/api/pads/${encodeURIComponent(slug)}/access-requests${filesView}`,
         requested: req.query.access === "requested",
         spacePath: `${config.padPath}/${encodeURIComponent(slug)}${filesView}`,

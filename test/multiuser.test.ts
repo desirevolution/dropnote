@@ -85,8 +85,14 @@ test("multiuser validates trusted socket peers and usernames on HTTP and WebSock
 
 test("private spaces have owner-only management and revocable read and edit roles", async (t) => {
   const { request, json, socket, dataDir } = await setup(t);
-  assert.equal((await json("/api/pads", owner, "POST", { slug, owner: collaborator })).status, 201);
-  const ownerPage = await request(`/p/${slug}`, owner);
+  const created = await json("/api/pads", owner, "POST", { slug, owner: collaborator });
+  assert.equal(created.status, 201);
+  const { path: createdPath } = await created.json();
+  const ownerPage = await request(createdPath, owner);
+  assert.equal(ownerPage.status, 200);
+  const wrongCase = await request(createdPath, "Alice");
+  assert.equal(wrongCase.status, 404);
+  assert.match(await wrongCase.text(), /Signed in as Alice\./);
   assert.match(ownerPage.headers.get("cache-control") ?? "", /private, no-store/);
   const ownerBody = await ownerPage.text();
   assert.match(ownerBody, /data-open-dialog="owned-spaces-dialog"[^>]*>[^<]*<span id="access-request-badge"/);

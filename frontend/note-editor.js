@@ -151,10 +151,25 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
     editor.focus();
   }
 
-  // A tap on empty scroller background should behave like a tap below the last line.
-  editor.scrollDOM.addEventListener("click", (event) => {
-    if (event.button === 0 && event.target === editor.scrollDOM) focusEnd();
-  });
+  const notePanel = editor.dom.closest(".note-card");
+  function focusBelowText(event) {
+    if (!writable || event.defaultPrevented || event.button !== 0 || event.detail === 0 ||
+        event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+    const target = event.target;
+    if (target.closest(".cm-line, .cm-gutters, button, a, input")) return;
+
+    const scroller = editor.scrollDOM;
+    if (scroller.contains(target)) {
+      const bounds = scroller.getBoundingClientRect();
+      const x = event.clientX - bounds.left - scroller.clientLeft;
+      const y = event.clientY - bounds.top - scroller.clientTop;
+      if (x < 0 || x >= scroller.clientWidth || y < 0 || y >= scroller.clientHeight) return;
+    }
+
+    const lastLine = editor.lineBlockAt(editor.state.doc.length);
+    if (event.clientY >= editor.documentTop + lastLine.bottom) focusEnd();
+  }
+  notePanel.addEventListener("click", focusBelowText);
 
   function queueCursor() {
     if (timer) return;
@@ -268,6 +283,7 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
       visualViewport?.removeEventListener("scroll", queueViewportUpdate);
       document.removeEventListener("visibilitychange", queueCursor);
       window.removeEventListener("blur", queueCursor);
+      notePanel.removeEventListener("click", focusBelowText);
       editor.destroy();
       for (const event of historyEvents) undoManager.off(event, updateHistory);
       undoManager.destroy();

@@ -489,8 +489,8 @@ function describeDuration(seconds: number, language: Language): string {
 }
 
 /** The page shown for a Slug that has no Pad (expired or never existed). */
-export function renderNotFoundPage(access?: { action: string; requested: boolean; spacePath: string }, language: Language = "en"): string {
-  const t = (message: string) => escapeHtml(translate(language, message));
+export function renderNotFoundPage(access?: { username: string; action: string; requested: boolean; spacePath: string }, language: Language = "en"): string {
+  const t = (message: string, values?: Record<string, string>) => escapeHtml(translate(language, message, values));
   return `<!doctype html>
 <html lang="${language}">
 <head>
@@ -508,6 +508,7 @@ ${THEME_CSS}
 <body>
 <main>
 <h1>${t(access ? "Space unavailable" : "Space not found")}</h1>
+${access ? `<p>${t("Signed in as {name}.", { name: access.username })}</p>` : ""}
 ${access
   ? access.requested
     ? `<p role="status">${t("If the space is available, your request has been sent to its owner.")}</p>

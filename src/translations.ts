@@ -117,6 +117,7 @@ const german: Record<string, string> = {
   "7 days": "7 Tage",
   "30 days": "30 Tage",
   "Space not found": "Space nicht gefunden",
+  "Signed in as {name}.": "Angemeldet als {name}.",
   "Space unavailable": "Space nicht verfügbar",
   "If the space is available, your request has been sent to its owner.": "Falls der Space verfügbar ist, wurde die Anfrage an die Person gesendet, der er gehört.",
   "Try opening the space again": "Space erneut öffnen",
