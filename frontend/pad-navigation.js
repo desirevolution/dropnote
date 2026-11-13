@@ -1,13 +1,13 @@
 import { spaceLabel } from "../src/space-label.ts";
-import { addMyPad, clearMyPads, listMyPads, removeMyPad } from "./my-pads.js";
+import { addMyPad, listMyPads, removeMyPad, STORAGE_KEY } from "./my-pads.js";
+import { language, t } from "./i18n.js";
 
 const startKey = "dropnote:start-pad";
 const $ = (id) => document.getElementById(id);
-const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 export function dateLabel(value) {
   const date = new Date(value);
-  return Number.isFinite(+date) ? dateFormat.format(date) : "";
+  return Number.isFinite(+date) ? new Intl.DateTimeFormat(language() || undefined, { dateStyle: "medium", timeStyle: "short" }).format(date) : "";
 }
 
 let storageUser = null;
@@ -84,10 +84,10 @@ export async function openPersonalStartPad() {
   if (typeof selected?.slug !== "string" || selected.slug === "default") return false;
   try {
     const response = await fetch(`/api/pads/${encodeURIComponent(selected.slug)}`, { cache: "no-store" });
-    if (response.status === 404) return forgetMissingStart(selected);
+    if (response.status === 404) return forgetMissingStart();
     if (!response.ok) return false;
     const pad = await response.json();
-    if (!samePad(selected, pad)) return forgetMissingStart(selected);
+    if (!samePad(selected, pad)) return forgetMissingStart();
     const path = localPadAddress(pad.path);
     if (path && path !== "/") {
       location.replace(path);
@@ -99,29 +99,45 @@ export async function openPersonalStartPad() {
   return false;
 }
 
-function forgetMissingStart(selected) {
+function forgetMissingStart() {
   saveLocal(startKey, null);
-  const storage = localStore();
-  if (!storageUser && storage && selected.url) removeMyPad(storage, selected.url, selected.createdAt);
-  notice("Your start page is unavailable. Default is open instead.");
+  notice(t("Your start page is unavailable. Default is open instead."));
   return false;
 }
 
-export function rememberPad(pad, createdHere = false) {
+function rememberPad(pad) {
   const storage = localStore();
   const path = localPadAddress(pad.path);
   if (!storage || !path) return false;
-  const url = new URL(path, location.origin).href;
   const entry = {
-    slug: pad.slug,
-    url,
-    encrypted: pad.encrypted === true,
-    createdAt: pad.createdAt,
-    expiresAt: pad.expiresAt ?? null,
-    ...(createdHere ? { createdHere: true } : {}),
+    slug: pad.slug, url: new URL(path, location.origin).href, encrypted: pad.encrypted,
+    createdAt: pad.createdAt, expiresAt: pad.expiresAt ?? null,
+    sharedBy: pad.sharedBy, canEdit: pad.canEdit,
   };
   addMyPad(storage, entry);
   return listMyPads(storage).some((saved) => samePad(saved, entry));
+}
+
+export function isStartPad(pad) {
+  const selected = startPad();
+  return selected ? samePad(selected, pad) : pad.slug === "default";
+}
+
+export function startBadge(pad) {
+  const badge = document.createElement("span");
+  badge.className = "start-marker";
+  badge.hidden = !isStartPad(pad);
+  const icon = document.createElement("span");
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "⌂";
+  badge.append(icon, t("Start page"));
+  return badge;
+}
+
+export function sharingLabel(pad) {
+  return pad.sharedBy
+    ? `${t("Shared by {name}", { name: pad.sharedBy })} · ${t(pad.canEdit ? "Can edit" : "Can read")}`
+    : "";
 }
 
 export function forgetPad(pad) {
@@ -138,62 +154,59 @@ export function initPadNavigation(metadata) {
   const home = $("home-link");
   const sharedMarker = $("shared-start-marker");
   let checking = false;
+  let bookmarkRevision = 0;
+
+  function bookmarks(storage) {
+    return storage ? listMyPads(storage).filter((pad) => pad.slug !== "default" && !pad.createdHere &&
+      typeof pad.sharedBy === "string" && localPadAddress(pad.url)) : [];
+  }
 
   function render() {
     const storage = localStore();
-    const selected = startPad();
-    const pads = storage ? listMyPads(storage).filter((pad) => localPadAddress(pad.url)) : [];
-    pads.sort((a, b) => Number(samePad(selected, b)) - Number(samePad(selected, a)));
-    list.replaceChildren(...pads.map((pad) => {
-      const row = document.createElement("li");
-      const info = document.createElement("div");
-      info.className = "my-pad-info";
-      const link = document.createElement("a");
-      link.href = localPadAddress(pad.url);
-      link.textContent = spaceLabel(pad.slug);
-      const detail = document.createElement("span");
-      detail.className = "my-pad-detail";
-      const expiry = pad.expiresAt && dateLabel(pad.expiresAt);
-      detail.textContent = [
-        samePad(selected, pad) ? "Start page" : "",
-        pad.createdHere ? "Created here" : "",
-        pad.encrypted ? "Encrypted" : "",
-        expiry ? (Date.parse(pad.expiresAt) <= Date.now() ? `Expired ${expiry}` : `Expires ${expiry}`) : "",
-      ].filter(Boolean).join(" · ");
-      info.append(link, detail);
-      row.append(info);
-      if (!pad.createdHere) {
+    if (list) {
+      const pads = bookmarks(storage);
+      pads.sort((a, b) => Number(isStartPad(b)) - Number(isStartPad(a)));
+      list.replaceChildren(...pads.map((pad) => {
+        const row = document.createElement("li");
+        const info = document.createElement("div");
+        info.className = "my-pad-info";
+        const link = document.createElement("a");
+        link.href = localPadAddress(pad.url);
+        link.textContent = spaceLabel(pad.slug);
+        const detail = document.createElement("span");
+        detail.className = "my-pad-detail";
+        detail.textContent = [
+          sharingLabel(pad),
+          pad.encrypted ? t("Encrypted") : "",
+        ].filter(Boolean).join(" · ");
+        info.append(link, startBadge(pad), detail);
+        row.append(info);
         const remove = document.createElement("button");
         remove.type = "button";
-        remove.textContent = "Remove bookmark";
-        remove.setAttribute("aria-label", `Remove bookmark for ${spaceLabel(pad.slug)}`);
+        remove.textContent = t("Remove bookmark");
+        remove.setAttribute("aria-label", t("Remove bookmark for {name}", { name: spaceLabel(pad.slug) }));
         remove.addEventListener("click", () => {
-          if (samePad(startPad(), pad)) {
-            if (!window.confirm("Remove this bookmark and reset your start page to Default?")) return;
-            if (!saveLocal(startKey, null)) {
-              notice("This browser could not reset the start page.");
-              return;
-            }
-          }
+          bookmarkRevision += 1;
           removeMyPad(storage, pad.url, pad.createdAt);
           render();
         });
         row.append(remove);
+        return row;
+      }));
+      $("my-pads-empty").hidden = pads.length > 0;
+      clear.hidden = pads.length === 0;
+      if (remember) {
+        remember.disabled = pads.some((pad) => samePad(pad, metadata));
+        remember.textContent = t(remember.disabled ? "Bookmarked" : "Bookmark space");
       }
-      return row;
-    }));
-    $("my-pads-empty").hidden = pads.length > 0;
-    clear.hidden = !pads.some((pad) => !pad.createdHere && !samePad(selected, pad));
-    remember.disabled = pads.some((pad) => samePad(pad, metadata));
-    const personal = samePad(selected, metadata);
-    const sharedIsStart = !selected;
-    const currentIsStart = sharedIsStart ? metadata.slug === "default" : personal;
+    }
+    const currentIsStart = isStartPad(metadata);
     $("start-pad-marker").hidden = !currentIsStart;
-    sharedMarker.hidden = !sharedIsStart;
+    sharedMarker.hidden = Boolean(startPad());
     if (currentIsStart) home.setAttribute("aria-current", "page");
     else home.removeAttribute("aria-current");
-    setStart.disabled = metadata.slug === "default" && sharedIsStart;
-    setStart.textContent = personal ? "Reset start page" : "Set as start page";
+    setStart.disabled = metadata.slug === "default" && currentIsStart;
+    setStart.textContent = t(currentIsStart && metadata.slug !== "default" ? "Reset start page" : "Set as start page");
   }
 
   home.addEventListener("click", (event) => {
@@ -201,69 +214,60 @@ export function initPadNavigation(metadata) {
         !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) event.preventDefault();
   });
 
-  remember.addEventListener("click", () => {
-    notice(rememberPad(metadata) ? "Added to Saved spaces." : "This browser could not save the space.");
+  remember?.addEventListener("click", () => {
+    notice(t(rememberPad(metadata) ? "Bookmark added." : "This browser could not save the bookmark."));
     render();
   });
   setStart.addEventListener("click", () => {
-    const previous = startPad();
-    const value = metadata.slug === "default" || samePad(previous, metadata) ? null : JSON.stringify({
+    const value = metadata.slug === "default" || isStartPad(metadata) ? null : JSON.stringify({
       slug: metadata.slug, createdAt: metadata.createdAt, url: new URL(metadata.path, location.origin).href,
     });
     if (saveLocal(startKey, value)) {
-      const saved = !value || rememberPad(metadata);
-      const title = value ? spaceLabel(metadata.slug) : spaceLabel("default");
-      const storage = localStore();
-      const previousSaved = previous && storage && listMyPads(storage).some((pad) => samePad(previous, pad));
-      const previousMessage = previousSaved ? ` Find ${spaceLabel(previous.slug)} in Saved spaces.` : "";
-      const saveMessage = saved ? "" : " This browser could not add it to Saved spaces.";
-      notice(`${title} is now your start page in this browser.${previousMessage}${saveMessage}`);
+      const name = spaceLabel(value ? metadata.slug : "default");
+      notice(t("{name} is now your start page in this browser.", { name }));
     } else {
-      notice("This browser could not save the start page.");
+      notice(t("This browser could not save the start page."));
     }
     render();
   });
-  clear.addEventListener("click", () => {
-    const storage = localStore();
-    if (storage) {
-      const known = listMyPads(storage).find((pad) => samePad(startPad(), pad));
-      clearMyPads(storage, known?.url);
-    }
+  clear?.addEventListener("click", () => {
+    bookmarkRevision += 1;
+    saveLocal(STORAGE_KEY, null);
     render();
   });
-  document.querySelector('[data-open-dialog="my-pads-dialog"]').addEventListener("click", checkCreatedSpaces);
-  async function checkCreatedSpaces() {
+  document.querySelector('[data-open-dialog="my-pads-dialog"]')?.addEventListener("click", async () => {
     const storage = localStore();
-    if (checking || !storage) return;
+    if (!storage || checking) return;
     checking = true;
+    const revision = bookmarkRevision;
     try {
       for (const saved of listMyPads(storage)) {
-        if (!saved.createdHere || !localPadAddress(saved.url) || !$("my-pads-dialog").open) continue;
+        if (revision !== bookmarkRevision || !$("my-pads-dialog").open) break;
+        if (saved.slug === "default" || !localPadAddress(saved.url)) continue;
         const response = await fetch(`/api/pads/${encodeURIComponent(saved.slug)}`, {
           cache: "no-store", signal: AbortSignal.timeout(5_000),
         });
-        if (response.status === 429) break;
-        const actual = response.ok ? await response.json() : null;
-        if (response.status === 404 || (actual && !samePad(saved, actual))) {
+        if (revision !== bookmarkRevision || response.status === 429) break;
+        const pad = response.ok ? await response.json() : null;
+        if (revision !== bookmarkRevision) break;
+        if (pad?.sharedBy && samePad(saved, pad)) {
+          rememberPad(pad);
+        } else if (response.status === 404 || pad) {
           removeMyPad(storage, saved.url, saved.createdAt);
-          if (samePad(startPad(), saved)) saveLocal(startKey, null);
-          render();
         }
+        render();
       }
     } catch {
-      // Keep entries when the server could not confirm their state.
+      // Keep bookmarks if the server cannot confirm their metadata.
     } finally {
       checking = false;
     }
-  }
-  window.addEventListener("storage", render);
+  });
+  window.addEventListener("storage", () => {
+    bookmarkRevision += 1;
+    render();
+  });
   render();
 
-  return {
-    refresh() {
-      const storage = localStore();
-      if (storage && listMyPads(storage).some((pad) => samePad(pad, metadata))) rememberPad(metadata);
-      render();
-    },
-  };
+  return { refresh: render };
 }

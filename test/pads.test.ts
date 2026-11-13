@@ -290,7 +290,7 @@ test("the cleanup sweep deletes expired Pads including all their files", async (
   }
 });
 
-test("the Pad page offers Pad creation with the TTL choice and the My Pads list", async () => {
+test("the Pad page offers Pad creation with the TTL choice and My spaces", async () => {
   const dataDir = await makeTempDataDir();
   const server = await startServer({ dataDir });
   try {
@@ -303,12 +303,11 @@ test("the Pad page offers Pad creation with the TTL choice and the My Pads list"
     assert.ok(ttl, "a TTL choice is offered");
     assert.match(ttl, /<option value="default" selected>Instance default \(7 days\)<\/option>/, "the 7-day instance default is preselected");
     assert.match(ttl, /<option value="604800">7 days<\/option>/, "a 7-day preset exists");
-    assert.match(ttl, /<option value="never">never<\/option>/, "a never option exists");
+    assert.match(ttl, /<option value="never">Never<\/option>/, "a never option exists");
     assert.match(body, /<button[^>]*type="submit"[^>]*>\s*Create space\s*<\/button>/, "a create button submits the form");
 
-    assert.match(body, /<ul[^>]*id="my-pads-list"/, "the My Pads list is on the page");
-    assert.match(body, /<button[^>]*id="clear-my-pads"/, "the list can be cleared entirely");
-    assert.match(body, /Encrypted spaces require their passphrase/, "the list is labeled as storing Share Links without Keys");
+    assert.match(body, /<ul[^>]*id="owned-spaces-list"/, "My spaces is available in single-user mode");
+    assert.doesNotMatch(body, /id="my-pads-list"|id="clear-my-pads"/);
   } finally {
     await server.stop();
   }
@@ -323,7 +322,7 @@ test("an additional Pad's page carries the same tools as the Default Pad", async
     const body = await (await fetch(`${server.baseUrl}/p/project-notes`)).text();
     assert.match(body, /<h1[^>]*>\s*Project notes\s*<\/h1>/, "the page names the additional Pad");
     assert.match(body, /<form[^>]*id="new-pad-form"/, "Pad creation is offered here too");
-    assert.match(body, /<ul[^>]*id="my-pads-list"/, "the My Pads list is here too");
+    assert.match(body, /<ul[^>]*id="owned-spaces-list"/, "My spaces is here too");
   } finally {
     await server.stop();
   }

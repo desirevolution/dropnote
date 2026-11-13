@@ -137,9 +137,9 @@ export class PadStore {
     return pad;
   }
 
-  ownedPads(username: string): PadRecord[] {
+  ownedPads(username: string | null): PadRecord[] {
     return Object.values(this.#index.pads)
-      .filter((pad) => pad.owner === username && this.getLivePad(pad.slug))
+      .filter((pad) => pad.slug !== DEFAULT_PAD_SLUG && (username === null || pad.owner === username) && this.getLivePad(pad.slug))
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
 

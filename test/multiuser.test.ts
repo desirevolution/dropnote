@@ -88,7 +88,9 @@ test("private spaces have owner-only management and revocable read and edit role
   assert.equal((await json("/api/pads", owner, "POST", { slug, owner: collaborator })).status, 201);
   const ownerPage = await request(`/p/${slug}`, owner);
   assert.match(ownerPage.headers.get("cache-control") ?? "", /private, no-store/);
-  assert.match(await ownerPage.text(), /Manage access/);
+  const ownerBody = await ownerPage.text();
+  assert.match(ownerBody, /Manage access/);
+  assert.doesNotMatch(ownerBody, /id="remember-pad"/);
   const bytes = Buffer.from("private file");
   const uploaded = await request(`${api}/attachments`, owner, { method: "POST", body: bytes });
   assert.equal(uploaded.status, 201);
@@ -108,6 +110,12 @@ test("private spaces have owner-only management and revocable read and edit role
   assert.equal((await request(api, "Bob")).status, 404);
   const page = await (await request(`/p/${slug}`, collaborator)).text();
   assert.match(page, /"canEdit":false/);
+  assert.match(page, /id="remember-pad"/);
+  assert.ok(page.includes(`Shared by ${owner}`));
+  assert.deepEqual((await list(owner))[0].sharedWith, [collaborator]);
+  const received = await (await request(api, collaborator)).json();
+  assert.equal(received.sharedBy, owner);
+  assert.equal(received.canEdit, false);
   assert.doesNotMatch(page, /id="space-access-dialog"|id="delete-pad"/);
   assert.deepEqual(Buffer.from(await (await request(file, collaborator)).arrayBuffer()), bytes);
   assert.equal((await request(`${api}/attachments`, collaborator, { method: "POST", body: bytes })).status, 403);
@@ -183,6 +191,10 @@ test("single-user mode ignores identity headers and keeps links usable", async (
   assert.equal((await json("/api/pads", owner, "POST", { slug })).status, 201);
   assert.equal((await request(api)).status, 200);
   assert.doesNotMatch(await (await request(`/p/${slug}`, owner)).text(), /class="account-name"/);
+  const spaces = async () => (await (await request("/api/my-spaces")).json()).spaces;
+  assert.deepEqual((await spaces()).map((space: { slug: string }) => space.slug), [slug]);
+  assert.equal((await request(api, undefined, { method: "DELETE" })).status, 204);
+  assert.deepEqual(await spaces(), []);
   assert.throws(() => PadStore.open(dataDir, true), /different MULTIUSER mode/);
 });
 

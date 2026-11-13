@@ -1,3 +1,4 @@
+import { language, t } from "./i18n.js";
 /**
  * The Pad's flat attachment list (no folders, per the glossary): uploads with
  * progress, live list rendering from the shared Yjs document, downloads of
@@ -128,9 +129,9 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
     try {
       // Start the clipboard write in the click handler, before awaiting conversion.
       await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
-      if (preview === source) imageCopyStatus.textContent = "Image copied.";
+      if (preview === source) imageCopyStatus.textContent = t("Image copied.");
     } catch {
-      if (preview === source) imageCopyStatus.textContent = "Could not copy the image. Download it from the file list.";
+      if (preview === source) imageCopyStatus.textContent = t("Could not copy the image. Download it from the file list.");
     } finally {
       if (png instanceof Promise) void png.catch(() => {});
       if (preview === source) copyImage.disabled = false;
@@ -179,7 +180,7 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
     if (previewTypes.has(entry.contentType)) {
       const open = button("View", () => download(entry, true));
       open.className = "file-action thumbnail-button";
-      open.setAttribute("aria-label", `View ${entry.name}`);
+      open.setAttribute("aria-label", t("View {name}", { name: entry.name }));
       if (typeof entry.thumbnail === "string" && entry.thumbnail.length <= 48_000 &&
           /^data:image\/(?:webp|png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(entry.thumbnail)) {
         const image = document.createElement("img");
@@ -198,7 +199,7 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
     size.className = "attachment-size";
     const date = new Date(entry.addedAt);
     size.textContent = Number.isFinite(+date)
-      ? `${formatBytes(entry.size)} · ${date.toLocaleString(undefined, { dateStyle: "short", timeStyle: "medium" })}`
+      ? `${formatBytes(entry.size)} · ${date.toLocaleString(language(), { dateStyle: "short", timeStyle: "medium" })}`
       : formatBytes(entry.size);
     const description = document.createElement("div");
     description.className = "file-description";
@@ -209,17 +210,17 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
     if (!key) {
       action.href = attachmentUrl(slug, entry.blobId, entry.name);
       action.download = entry.name;
-      action.textContent = "Download";
+      action.textContent = t("Download");
     }
     action.className = "file-action file-download";
-    action.setAttribute("aria-label", `Download ${entry.name}`);
+    action.setAttribute("aria-label", t("Download {name}", { name: entry.name }));
     const actions = document.createElement("div");
     actions.className = "file-actions";
     actions.append(action);
     row.append(info, actions);
     if (canEdit) {
       const remove = button("Remove", async () => {
-        if (!canEdit || !window.confirm(`Remove “${entry.name}” from this pad?`)) return;
+        if (!canEdit || !window.confirm(t("Remove “{name}” from this pad?", { name: entry.name }))) return;
         remove.disabled = true;
         try {
           showError(null);
@@ -231,7 +232,7 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
         }
       });
       remove.className = "file-action quiet file-remove";
-      remove.setAttribute("aria-label", `Remove ${entry.name}`);
+      remove.setAttribute("aria-label", t("Remove {name}", { name: entry.name }));
       actions.append(remove);
     }
     return row;
@@ -250,7 +251,7 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
         setTransferPhase(row, "Uploading");
       }
       if (signal.aborted) return;
-      if (!canEdit) throw new Error("Wait until editing is available, then retry.");
+      if (!canEdit) throw new Error(t("Wait until editing is available, then retry."));
       const request = await postAttachment(body, id, (fraction) => setProgress(row, fraction));
       if (request.status !== 201) throw new Error(errorMessageOf(request));
       const { blobId } = JSON.parse(request.responseText);
@@ -273,7 +274,7 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
       const status = row.querySelector(".transfer-phase");
       status.className = "transfer-error";
       status.setAttribute("role", "status");
-      status.textContent = error.message || "Upload failed.";
+      status.textContent = error.message || t("Upload failed.");
       const retry = button("Retry", () => {
         if (!canEdit) return;
         row.remove();
@@ -320,7 +321,7 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
         closePreview();
         preview = { url, blob, dispose: () => sink?.dispose() };
         copyImage.disabled = !canCopyImage;
-        imageCopyStatus.textContent = canCopyImage ? "" : "Image copying is unavailable here. Download it from the file list.";
+        imageCopyStatus.textContent = canCopyImage ? "" : t("Image copying is unavailable here. Download it from the file list.");
         $("image-title").textContent = entry.name;
         fullImage.alt = entry.name;
         fullImage.src = url;
@@ -336,7 +337,7 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
         }, KEEP_SAVED_MS);
       }
     } catch (error) {
-      if (!signal.aborted) showError(error instanceof DecryptionError ? "This file could not be decrypted." : error.message);
+      if (!signal.aborted) showError(error instanceof DecryptionError ? t("This file could not be decrypted.") : error.message);
     } finally {
       row.remove();
       if (view) openingImage = false;
@@ -367,8 +368,8 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
         if (event.lengthComputable) onFraction(event.loaded / event.total);
       });
       request.addEventListener("load", () => resolve(request));
-      request.addEventListener("abort", () => reject(new Error("Upload cancelled.")));
-      request.addEventListener("error", () => reject(new Error("Could not reach the server. Try again.")));
+      request.addEventListener("abort", () => reject(new Error(t("Upload cancelled."))));
+      request.addEventListener("error", () => reject(new Error(t("Could not reach the server. Try again."))));
       request.send(body);
     });
   }
@@ -387,7 +388,7 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
       showError(null);
       for (const entry of attachments.toArray()) {
         if (!canEdit) {
-          showError("Editing is unavailable. Remaining files were kept.");
+          showError(t("Editing is unavailable. Remaining files were kept."));
           return;
         }
         try {
@@ -412,7 +413,7 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
 
 async function imageAsPng(image, expectedUrl) {
   await image.decode();
-  if (image.src !== expectedUrl) throw new Error("The image preview has changed.");
+  if (image.src !== expectedUrl) throw new Error(t("The image preview has changed."));
   const canvas = document.createElement("canvas");
   canvas.width = image.naturalWidth;
   canvas.height = image.naturalHeight;
@@ -420,7 +421,7 @@ async function imageAsPng(image, expectedUrl) {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);
-      else reject(new Error("Could not encode the image as PNG."));
+      else reject(new Error(t("Could not encode the image as PNG.")));
     }, "image/png");
   });
 }
@@ -428,7 +429,7 @@ async function imageAsPng(image, expectedUrl) {
 function button(label, action) {
   const element = document.createElement("button");
   element.type = "button";
-  element.textContent = label;
+  element.textContent = t(label);
   element.addEventListener("click", action);
   return element;
 }
@@ -460,14 +461,14 @@ function progressRowFor(item, phase) {
   name.textContent = item.name;
   const status = document.createElement("span");
   status.className = "transfer-phase attachment-size";
-  status.textContent = phase;
+  status.textContent = t(phase);
   const info = document.createElement("div");
   info.className = "file-info";
   info.append(name, status);
   const bar = document.createElement("progress");
   bar.max = 100;
   bar.value = 0;
-  bar.setAttribute("aria-label", `${phase} ${item.name}`);
+  bar.setAttribute("aria-label", `${t(phase)} ${item.name}`);
   const percent = document.createElement("span");
   percent.className = "attachment-size";
   percent.textContent = "0%";
@@ -476,8 +477,8 @@ function progressRowFor(item, phase) {
 }
 
 function setTransferPhase(row, phase) {
-  row.querySelector(".transfer-phase").textContent = phase;
-  row.querySelector("progress").setAttribute("aria-label", `${phase} ${row.dataset.name}`);
+  row.querySelector(".transfer-phase").textContent = t(phase);
+  row.querySelector("progress").setAttribute("aria-label", `${t(phase)} ${row.dataset.name}`);
   setProgress(row, 0);
 }
 
@@ -605,22 +606,22 @@ function showError(message) {
 function errorMessageOf(request) {
   try {
     const body = JSON.parse(request.responseText);
-    if (typeof body.error === "string" && body.error.length > 0) return body.error;
+    if (typeof body.error === "string" && body.error.length > 0) return t(body.error);
   } catch {
     // fall through to the generic message
   }
-  return "Attaching the file failed.";
+  return t("Attaching the file failed.");
 }
 
 /** The download response's clear error text, or a fallback. */
 async function serverErrorOf(response) {
   try {
     const body = await response.json();
-    if (typeof body.error === "string" && body.error.length > 0) return body.error;
+    if (typeof body.error === "string" && body.error.length > 0) return t(body.error);
   } catch {
     // fall through to the generic message
   }
-  return "The Attachment could not be downloaded.";
+  return t("The Attachment could not be downloaded.");
 }
 
 function formatBytes(bytes) {

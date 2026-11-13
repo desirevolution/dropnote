@@ -1,5 +1,7 @@
 import * as Y from "yjs";
-import QRCode from "qrcode";
+import { initShareQr } from "./share-qr.js";
+import { consumeOpeningSecret } from "./share-secret.js";
+import { t } from "./i18n.js";
 import { decodeBase64url, encodeBase64url } from "./crypto.js";
 import { derivePadKey, padProof, presenceKey, verifyPadKey } from "./passphrase.js";
 import { initAttachments } from "./attachments.js";
@@ -14,6 +16,7 @@ import { dateLabel, forgetPad, initPadNavigation, localValue, notice, openPerson
 const $ = (id) => document.getElementById(id);
 const metadata = JSON.parse($("pad-metadata").textContent);
 const encrypted = metadata.encrypted;
+let openingSecret = consumeOpeningSecret(metadata, window.takeOpeningPassphrase?.());
 const workspace = $("workspace");
 const syncStatus = $("sync-status");
 const syncError = $("sync-error");
@@ -63,27 +66,25 @@ const tabs = initWorkspaceTabs({
 });
 
 setStorageUser(metadata.username);
-initPadActions(metadata.username);
-if (metadata.username) initSpaceAccess(api);
+initPadActions();
+initSpaceAccess(api);
 const navigation = initPadNavigation(metadata);
 
-$("copy-link").addEventListener("click", () => copyText(padUrl, $("copy-status"), "Link copied."));
-$("copy-files-link").addEventListener("click", () => copyText(filesUrl.href, $("copy-status"), "Files link copied."));
+$("copy-link").addEventListener("click", () => copyText(padUrl, $("copy-status"), t("Link copied.")));
+$("copy-files-link").addEventListener("click", () => copyText(filesUrl.href, $("copy-status"), t("Files link copied.")));
 showUpload.addEventListener("click", () => tabs.showFiles());
-$("show-pad-qr").addEventListener("click", async () => {
-  const canvas = $("pad-qr");
-  const error = $("pad-qr-error");
-  canvas.hidden = error.hidden = true;
-  try {
-    await QRCode.toCanvas(canvas, padUrl, { width: 280, margin: 4 });
-    canvas.hidden = false;
-  } catch {
-    error.hidden = false;
-  }
-});
-$("pad-qr-link").href = padUrl;
-$("pad-qr-link").textContent = padUrl;
-noteCopy.addEventListener("click", () => copyText(noteText, $("note-copy-status"), "Text copied."));
+const qr = initShareQr(padUrl, metadata.slug);
+const codeView = $("code-view");
+const lineNumbers = $("line-numbers");
+const pressed = (button) => button.getAttribute("aria-pressed") === "true";
+for (const [button, setter] of [[codeView, "setCodeView"], [lineNumbers, "setLineNumbers"]]) {
+  button.addEventListener("click", () => {
+    const next = !pressed(button);
+    button.setAttribute("aria-pressed", String(next));
+    note?.[setter](next);
+  });
+}
+noteCopy.addEventListener("click", () => copyText(noteText, $("note-copy-status"), t("Text copied.")));
 
 noteDownload.addEventListener("click", () => {
   if (!noteText || workspace.hidden) return;
@@ -123,7 +124,7 @@ document.addEventListener("paste", (event) => {
 replaceNoteDialog.querySelector("form").addEventListener("submit", (event) => {
   if (event.submitter?.value !== "replace" || !canReplaceNote() || !noteReplacement) return;
   if (noteReplacement.original !== noteText) {
-    notice("The note changed while you were confirming. Paste again to replace it.");
+    notice(t("The note changed while you were confirming. Paste again to replace it."));
     return;
   }
   note.replaceText(noteReplacement.text);
@@ -150,7 +151,7 @@ function showUploadNotice() {
   if (tabs.selected !== "note") return;
   clearTimeout(uploadNoticeTimer);
   uploadNotice.hidden = false;
-  uploadNoticeText.textContent = "File added.";
+  uploadNoticeText.textContent = t("File added.");
   uploadNoticeTimer = setTimeout(() => {
     if (document.activeElement !== showUpload) hideUploadNotice();
   }, 8_000);
@@ -169,7 +170,7 @@ function showExpiry(expiresAt) {
   if (label) {
     label.hidden = !expiresAt;
     label.dateTime = expiresAt ?? "";
-    label.textContent = expiresAt ? `Expires ${dateLabel(expiresAt)}` : "";
+    label.textContent = expiresAt ? t("Expires {date}", { date: dateLabel(expiresAt) }) : "";
   }
   navigation.refresh();
 }
@@ -213,15 +214,15 @@ function updateSyncStatus() {
   const showPending = !writable && changesPending;
   syncStatus.dataset.state = failed ? "error" : active && !showPending ? "live" : "pending";
   const label = {
-    writable: "Connected",
-    readonly: "Read only",
-    connecting: "Connecting…",
-    reconnecting: "Connection lost · reconnecting…",
-    unreadable: "Sync unavailable",
-    missing: "Space unavailable",
-    locked: "Locked",
+    writable: t("Connected"),
+    readonly: t("Read only"),
+    connecting: t("Connecting…"),
+    reconnecting: t("Connection lost · reconnecting…"),
+    unreadable: t("Sync unavailable"),
+    missing: t("Space unavailable"),
+    locked: t("Locked"),
   }[connectionState];
-  const status = showPending ? `${label} · Changes pending` : label;
+  const status = showPending ? `${label} · ${t("Changes pending")}` : label;
   if (syncStatus.textContent !== status) syncStatus.textContent = status;
 }
 
@@ -248,7 +249,7 @@ function onMissing() {
   if ($("key-prompt")) $("key-prompt").hidden = true;
   if ($("lock-pad")) $("lock-pad").hidden = true;
   setState("missing");
-  showSyncError(metadata.username ? "This space is no longer available to you." : "This space has expired or was deleted.");
+  showSyncError(metadata.username ? t("This space is no longer available to you.") : t("This space has expired or was deleted."));
   if (!metadata.username) forgetPad(metadata);
   navigation.refresh();
 }
@@ -273,6 +274,8 @@ async function openPad(key = null) {
       sync?.presence(position);
     },
   });
+  note.setCodeView(pressed(codeView));
+  note.setLineNumbers(pressed(lineNumbers));
   attachments = initAttachments(doc, metadata.slug, {
     key,
     writeHeaders,
@@ -287,7 +290,7 @@ async function openPad(key = null) {
     metadata, key, proof, cursorKey,
     onState(state) {
       setState(state);
-      if (state === "unreadable") showSyncError("The space data could not be read. Reload the page to try again.");
+      if (state === "unreadable") showSyncError(t("The space data could not be read. Reload the page to try again."));
     },
     onPendingChange(pending) {
       changesPending = pending;
@@ -300,6 +303,8 @@ async function openPad(key = null) {
 }
 
 function closeWorkspace() {
+  openingSecret = null;
+  qr.setPassphrase(null);
   generation += 1;
   cancelNoteReplacement();
   clearTimeout(pinTimer);
@@ -374,12 +379,12 @@ function initPassphrase() {
       if (!await verifyPadKey(key, encryption.check)) throw new Error("Invalid passphrase");
       if (current !== generation) return;
       if (remember && !saveLocal(unlockKey, encodeBase64url(key))) {
-        notice("This browser could not save the unlock. The space is open for this visit.");
+        notice(t("This browser could not save the unlock. The space is open for this visit."));
       }
       await openPad(key);
     } catch {
       if (current === generation) {
-        error.textContent = "The passphrase could not unlock this space.";
+        error.textContent = t("The passphrase could not unlock this space.");
         error.hidden = false;
       }
     } finally {
@@ -406,10 +411,10 @@ initPinUnlock(metadata, {
 });
 
 $("clear-note")?.addEventListener("click", () => {
-  if (writable && window.confirm("Clear all text in Default?")) note.clear();
+  if (writable && window.confirm(t("Clear all text in Default?"))) note.clear();
 });
 $("clear-files")?.addEventListener("click", async () => {
-  if (!writable || clearing || !window.confirm(`Remove all ${fileCount} files from Default?`)) return;
+  if (!writable || clearing || !window.confirm(t("Remove all {count} files from Default?", { count: fileCount }))) return;
   clearing = true;
   updateActions();
   try {
@@ -421,7 +426,7 @@ $("clear-files")?.addEventListener("click", async () => {
 });
 
 $("delete-pad")?.addEventListener("click", async () => {
-  if (!writable || managing || !window.confirm(`Delete “${metadata.slug}”, its note and all its files?`)) return;
+  if (!writable || managing || !window.confirm(t("Delete “{name}”, its note and all its files?", { name: metadata.slug }))) return;
   const current = generation;
   managing = true;
   updateActions();
@@ -432,7 +437,7 @@ $("delete-pad")?.addEventListener("click", async () => {
     forgetPad(metadata);
     location.assign("/default");
   } catch (error) {
-    if (generation === current) notice(error.message || "Could not delete this space.");
+    if (generation === current) notice(error.message || t("Could not delete this space."));
   } finally {
     managing = false;
     updateActions();
@@ -460,7 +465,7 @@ $("ttl-form").addEventListener("submit", async (event) => {
     if (generation === current && $("ttl-dialog").open) $("ttl-dialog").close();
   } catch (error) {
     if (generation === current) {
-      errorLine.textContent = error.message || "Could not change the expiry.";
+      errorLine.textContent = error.message || t("Could not change the expiry.");
       errorLine.hidden = false;
     }
   } finally {
@@ -470,7 +475,8 @@ $("ttl-form").addEventListener("submit", async (event) => {
 });
 
 async function responseError(response) {
-  return (await response.json().catch(() => ({}))).error ?? "The request could not be completed.";
+  const { error } = await response.json().catch(() => ({}));
+  return t(error ?? "The request could not be completed.");
 }
 
 async function start() {
@@ -479,10 +485,28 @@ async function start() {
   showExpiry(metadata.expiresAt);
   if (!encrypted) return openPad();
   if (!crypto.subtle || !encryption) {
-    showSyncError("Encrypted spaces require HTTPS or localhost.");
+    showSyncError(t("Encrypted spaces require HTTPS or localhost."));
     return;
   }
   initPassphrase();
+  const incoming = openingSecret;
+  openingSecret = null;
+  if (incoming) {
+    const current = generation;
+    try {
+      const key = await derivePadKey(incoming.passphrase, encryption.salt);
+      const valid = await verifyPadKey(key, encryption.check);
+      if (current !== generation) return;
+      if (valid) {
+        if (incoming.created) qr.setPassphrase(incoming.passphrase);
+        return openPad(key);
+      }
+    } catch {
+      if (current !== generation) return;
+    }
+    $("key-error").textContent = t("The passphrase could not unlock this space.");
+    $("key-error").hidden = false;
+  }
   const remembered = localValue(unlockKey);
   if (remembered) {
     const current = generation;
@@ -499,10 +523,16 @@ async function start() {
   showUnlock();
 }
 
+if (encrypted) window.addEventListener("pagehide", () => {
+  openingSecret = null;
+  if ($("pad-qr-dialog").open) $("pad-qr-dialog").close();
+  qr.setPassphrase(null);
+});
+
 if (encrypted || metadata.username) {
   window.addEventListener("pageshow", (event) => {
     if (event.persisted) location.reload();
   });
 }
 
-start().catch(() => showSyncError("The space could not be opened. Reload the page to try again."));
+start().catch(() => showSyncError(t("The space could not be opened. Reload the page to try again.")));

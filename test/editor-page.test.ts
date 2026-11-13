@@ -18,7 +18,10 @@ test("the Default Pad shows the plain-text editor alongside its files", async ()
     assert.match(body, /class="brand" href="https:\/\/github\.com\/desirevolution\/dropnote"/);
     assert.match(body, /<span class="release-version">v0\.1\.4<\/span>/);
     assert.match(body, /<a href="\/" id="home-link"/);
-    assert.match(body, /id="my-pads-dialog"[\s\S]*?<a href="\/default">Default<\/a>[\s\S]*?id="my-pads-list"/);
+    assert.match(body, /id="owned-spaces-dialog"[\s\S]*?<a href="\/default">Default<\/a>[\s\S]*?id="owned-spaces-list"/);
+    assert.doesNotMatch(body, /id="my-pads-dialog"|id="remember-pad"/);
+    assert.match(body, /id="code-view" aria-pressed="false"/);
+    assert.match(body, /id="line-numbers" aria-pressed="false"/);
     assert.doesNotMatch(body, /<a[^>]*class="release-version"/);
 
     assert.match(body, /<button[^>]*id="download-note" disabled>Download text \(.txt\)<\/button>/);
@@ -55,4 +58,29 @@ test("the bundled editor frontend is served as a static asset", async () => {
   } finally {
     await server.stop();
   }
+});
+
+test("the page and word lists follow supported browser languages", async (t) => {
+  const server = await startServer({ dataDir: await makeTempDataDir() });
+  t.after(() => server.stop());
+
+  const german = await fetch(server.baseUrl, { headers: { "Accept-Language": "fr, de-CH;q=0.8, en;q=0.6" } });
+  assert.match(german.headers.get("vary") ?? "", /Accept-Language/i);
+  const page = await german.text();
+  assert.match(page, /<html lang="de">/);
+  assert.match(page, /Neuer Space/);
+  assert.match(page, /Zeilennummern/);
+  assert.match(page, /Instanzvorgabe \(7 Tage\)/);
+
+  const fallback = await fetch(server.baseUrl, { headers: { "Accept-Language": "fr, de;q=0" } });
+  assert.match(await fallback.text(), /<html lang="en">/);
+
+  for (const locale of ["en", "de"]) {
+    const response = await fetch(`${server.baseUrl}/api/words/${locale}`);
+    assert.equal(response.status, 200);
+    const words = (await response.text()).trim().split("\n");
+    assert.equal(words.length, 7_776);
+    assert.equal(new Set(words).size, 7_776);
+  }
+  assert.equal((await fetch(`${server.baseUrl}/api/words/fr`)).status, 404);
 });

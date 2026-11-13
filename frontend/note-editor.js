@@ -1,8 +1,10 @@
 import * as Y from "yjs";
 import { Compartment, EditorState, StateEffect, StateField } from "@codemirror/state";
-import { Decoration, EditorView, WidgetType, keymap, placeholder } from "@codemirror/view";
+import { Decoration, EditorView, WidgetType, keymap, lineNumbers, placeholder } from "@codemirror/view";
 import { defaultKeymap } from "@codemirror/commands";
 import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
+
+import { t } from "./i18n.js";
 
 const colors = ["#cf4c73", "#478bf3", "#3d9b6d", "#cb7723", "#9061dd", "#2098a9"];
 
@@ -34,6 +36,8 @@ class Cursor extends WidgetType {
 export function initNoteEditor(note, { onText, onCursor }) {
   const setMarkers = StateEffect.define();
   const editing = new Compartment();
+  const wrapping = new Compartment();
+  const gutters = new Compartment();
   const editingMode = (enabled) => [EditorState.readOnly.of(!enabled), EditorView.editable.of(enabled)];
   const cursors = new Map();
   const markers = StateField.define({
@@ -56,9 +60,10 @@ export function initNoteEditor(note, { onText, onCursor }) {
     doc: note.toString(),
     extensions: [
       editing.of(editingMode(false)),
-      EditorView.lineWrapping,
+      wrapping.of(EditorView.lineWrapping),
+      gutters.of([]),
       EditorView.contentAttributes.of({ "aria-labelledby": "note-title", spellcheck: "false", tabindex: "0" }),
-      placeholder("Write or paste text here…"),
+      placeholder(t("Write or paste text here…")),
       keymap.of([...yUndoManagerKeymap, ...defaultKeymap]),
       yCollab(note, null, { undoManager }),
       markers,
@@ -125,6 +130,12 @@ export function initNoteEditor(note, { onText, onCursor }) {
       if (!scrollPosition) return;
       editor.scrollDOM.scrollTo(...scrollPosition);
       editor.requestMeasure();
+    },
+    setCodeView(enabled) {
+      editor.dispatch({ effects: wrapping.reconfigure(enabled ? [] : EditorView.lineWrapping) });
+    },
+    setLineNumbers(enabled) {
+      editor.dispatch({ effects: gutters.reconfigure(enabled ? lineNumbers() : []) });
     },
     setEditing(enabled) {
       if (writable === enabled) return;

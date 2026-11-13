@@ -6,6 +6,8 @@ export interface MyPadEntry {
   createdAt: string;
   expiresAt: string | null;
   createdHere?: boolean;
+  sharedBy?: string;
+  canEdit?: boolean;
 }
 
 /** The localStorage key the list lives under. */

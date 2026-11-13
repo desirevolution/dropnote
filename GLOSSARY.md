@@ -80,13 +80,13 @@ _Avoid_: server-side encryption
 
 The space this browser opens at the site root. **Default** remains available at `/default`.
 
-**Saved spaces**
+**Bookmarks**
 
-The browser-local list of bookmarks. In single-user mode it also shows spaces created in that browser.
+The browser-local list of bookmarked spaces shared with the signed-in account.
 
 **My spaces**
 
-The list of spaces owned by the signed-in account in multiuser mode.
+The list of active spaces on the instance in single-user mode and spaces owned by the signed-in account in multiuser mode. Default is pinned first.
 
 **TTL**:
 How long a Pad lives; when it ends, the Pad and its Attachments are deleted. Chosen per Pad at creation, bounded by server configuration.

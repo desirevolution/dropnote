@@ -6,6 +6,8 @@
  */
 import { DEFAULT_PAD_SLUG, type PadRecord } from "./store.ts";
 import { PAD_CSS } from "./pad-styles.ts";
+import type { Language } from "./locale.ts";
+import { translate } from "./translations.ts";
 import { spaceLabel } from "./space-label.ts";
 
 /**
@@ -37,6 +39,20 @@ const THEME_RESTORE_SCRIPT = `
     }
   } catch (e) { /* storage unavailable — follow prefers-color-scheme */ }`;
 
+// Consume the fragment before loading the editor or initiating requests.
+const SHARE_FRAGMENT_SCRIPT = `
+  (() => {
+    if (!location.hash.startsWith("#passphrase=")) return;
+    let secret = new URLSearchParams(location.hash.slice(1)).get("passphrase");
+    history.replaceState(history.state, "", location.pathname + location.search);
+    window.takeOpeningPassphrase = () => {
+      const value = secret;
+      secret = null;
+      delete window.takeOpeningPassphrase;
+      return value;
+    };
+  })();`;
+
 /** The toggle button's behavior: swap the palette and persist the choice. */
 const THEME_TOGGLE_SCRIPT = `
   (function () {
@@ -48,7 +64,7 @@ const THEME_TOGGLE_SCRIPT = `
       if (theme === "dark" || theme === "light") return theme;
       return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     };
-    var refresh = function () { button.title = chosen() === "dark" ? "Light mode" : "Dark mode"; };
+    var refresh = function () { button.title = chosen() === "dark" ? button.dataset.lightLabel : button.dataset.darkLabel; };
     button.addEventListener("click", function () {
       var next = chosen() === "dark" ? "light" : "dark";
       root.setAttribute("data-theme", next);
@@ -70,21 +86,24 @@ export interface PadPageOptions {
   canManage?: boolean;
   canEdit?: boolean;
   releaseTag?: string;
+  language?: Language;
 }
 
 const PROJECT_URL = "https://github.com/desirevolution/dropnote";
 const RELEASE_TAG_PATTERN = /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$/;
 
 export function renderPadPage(pad: PadRecord, options: PadPageOptions): string {
+  const language = options.language ?? "en";
+  const t = (message: string, values?: Record<string, string | number>) => escapeHtml(translate(language, message, values));
   const username = options.username && escapeHtml(options.username);
   const canManage = options.canManage ?? true;
   const fixed = pad.slug === DEFAULT_PAD_SLUG;
   const heading = spaceLabel(pad.slug);
   const tag = options.releaseTag;
   const releaseTag = tag && tag.length <= 129 && RELEASE_TAG_PATTERN.test(tag) ? tag : null;
-  const sharedSpace = `<div class="shared-space-entry">
+  const defaultSpace = `<div class="shared-space-entry">
       <a href="/default">${spaceLabel(DEFAULT_PAD_SLUG)}</a>
-      <span id="shared-start-marker" class="my-pad-detail" hidden>Start page</span>
+      <span id="shared-start-marker" class="start-marker" hidden>${icon("home")} ${t("Start page")}</span>
     </div>`;
   // The Note content lives in the Pad's Live-Sync document (ADR-0002) and is
   // replayed into the editor by the client; the page itself starts empty.
@@ -97,14 +116,16 @@ export function renderPadPage(pad: PadRecord, options: PadPageOptions): string {
     encryption: pad.encryption && { salt: pad.encryption.salt, check: pad.encryption.check },
     pinProtected: pad.pin !== undefined,
     ...(username ? { username: options.username, canEdit: options.canEdit } : {}),
+    ...(username && !canManage && !fixed ? { sharedBy: pad.owner } : {}),
   }).replace(/</g, "\\u003c");
   const isEncrypted = pad.kind === "encrypted";
   return `<!doctype html>
-<html lang="en">
+<html lang="${language}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(heading)} – Dropnote</title>
+<script>${SHARE_FRAGMENT_SCRIPT}</script>
 <script>${THEME_RESTORE_SCRIPT}</script>
 <style>
 ${THEME_CSS}
@@ -115,16 +136,16 @@ ${PAD_CSS}
 <header class="topbar">
   <div class="topbar-inner">
     <div class="brand-group">
-      <a class="brand" href="${PROJECT_URL}" title="Dropnote on GitHub" aria-label="Dropnote on GitHub"><span class="brand-mark">${icon("pad")}</span>Dropnote</a>
+      <a class="brand" href="${PROJECT_URL}" title="${t("Dropnote on GitHub")}" aria-label="${t("Dropnote on GitHub")}"><span class="brand-mark">${icon("pad")}</span>Dropnote</a>
       <span class="release-version">${releaseTag ?? "dev"}</span>
     </div>
-    <nav class="actions" aria-label="Spaces">
-      <a href="/" id="home-link" class="home-link">${icon("home")} Home</a>
-      ${username ? '<button type="button" data-open-dialog="owned-spaces-dialog" aria-haspopup="dialog">My spaces</button>' : ""}
-      <button type="button" data-open-dialog="my-pads-dialog" aria-haspopup="dialog">Saved spaces</button>
-      <button type="button" id="theme-toggle" class="icon-button" aria-label="Toggle dark or light mode">${icon("moon", "theme-moon")}${icon("sun", "theme-sun")}</button>
+    <nav class="actions" aria-label="${t("Spaces")}">
+      <a href="/" id="home-link" class="home-link">${icon("home")} ${t("Home")}</a>
+      <button type="button" data-open-dialog="owned-spaces-dialog" aria-haspopup="dialog">${t("My spaces")}</button>
+      ${username ? `<button type="button" data-open-dialog="my-pads-dialog" aria-haspopup="dialog">${t("Bookmarks")}</button>` : ""}
+      <button type="button" id="theme-toggle" data-light-label="${t("Light mode")}" data-dark-label="${t("Dark mode")}" class="icon-button" aria-label="${t("Toggle dark or light mode")}">${icon("moon", "theme-moon")}${icon("sun", "theme-sun")}</button>
       ${username ? `<span class="account-name" title="${username}">${username}</span>` : ""}
-      <button type="button" class="primary" data-open-dialog="new-pad-dialog" aria-haspopup="dialog">${icon("plus")} New space</button>
+      <button type="button" class="primary" data-open-dialog="new-pad-dialog" aria-haspopup="dialog">${icon("plus")} ${t("New space")}</button>
     </nav>
   </div>
 </header>
@@ -133,40 +154,43 @@ ${PAD_CSS}
     <div>
       <h1${fixed ? ' class="visually-hidden"' : ""}>${escapeHtml(heading)}</h1>
       <div class="pad-meta">
-        <span class="pad-mode${isEncrypted ? " encrypted" : ""}">${icon(isEncrypted ? "lock" : "unlock")} ${isEncrypted ? "End-to-end encrypted" : "Unencrypted"}</span>
-        ${pad.pin ? '<span>Editing protected by PIN</span>' : ""}
+        <span class="pad-mode${isEncrypted ? " encrypted" : ""}">${icon(isEncrypted ? "lock" : "unlock")} ${t(isEncrypted ? "End-to-end encrypted" : "Unencrypted")}</span>
+        ${pad.pin ? `<span>${t("Editing protected by PIN")}</span>` : ""}
         ${pad.slug !== DEFAULT_PAD_SLUG ? '<time id="expires-at" hidden></time>' : ""}
-        <span id="start-pad-marker" hidden>Start page</span>
+        ${username && !canManage && !fixed && pad.owner ? `<span>${t("Shared by {name}", { name: pad.owner })} · ${t(options.canEdit ? "Can edit" : "Can read")}</span>` : ""}
+        <span id="start-pad-marker" class="start-marker" hidden>${icon("home")} ${t("Start page")}</span>
       </div>
     </div>
     <div class="actions">
       <span id="copy-status" role="status"></span>
-      <button type="button" id="copy-link">${icon("link")} Copy link</button>
-      <button type="button" id="show-pad-qr" data-open-dialog="pad-qr-dialog" aria-haspopup="dialog">QR code</button>
+      <button type="button" id="copy-link">${icon("link")} ${t("Copy link")}</button>
       <details class="pad-menu" id="pad-menu">
-        <summary aria-label="Space actions" title="Space actions">⋯</summary>
+        <summary aria-label="${t("Space actions")}" title="${t("Space actions")}">⋯</summary>
         <div class="menu-items">
-          <button type="button" id="download-note" disabled>Download text (.txt)</button>
-          <button type="button" id="remember-pad">Save space</button>
-          <button type="button" id="set-start-pad">Set as start page</button>
-          ${isEncrypted ? '<button type="button" id="lock-pad" hidden>Lock space</button>' : ""}
-          ${username && canManage && !fixed ? '<button type="button" data-open-dialog="space-access-dialog" aria-haspopup="dialog">Manage access</button>' : ""}
-          ${pad.slug === DEFAULT_PAD_SLUG
-            ? '<button type="button" id="clear-note" class="danger" disabled>Clear note</button><button type="button" id="clear-files" class="danger" disabled>Remove all files</button>'
-            : canManage ? '<button type="button" id="change-ttl" data-open-dialog="ttl-dialog" disabled>Change expiry</button><button type="button" id="delete-pad" class="danger" disabled>Delete space</button>' : ""}
+          <button type="button" id="show-pad-qr" data-open-dialog="pad-qr-dialog" aria-haspopup="dialog">${t("QR code")}</button>
+          ${username && canManage && !fixed ? `<button type="button" data-open-dialog="space-access-dialog" aria-haspopup="dialog">${t("Manage access")}</button>` : ""}
+          ${username && !canManage && !fixed ? `<button type="button" id="remember-pad">${t("Bookmark space")}</button>` : ""}
+          <button type="button" id="set-start-pad">${t("Set as start page")}</button>
+          <button type="button" id="download-note" disabled>${t("Download text (.txt)")}</button>
+          ${isEncrypted ? `<button type="button" id="lock-pad" hidden>${t("Lock space")}</button>` : ""}
+          ${!fixed && canManage ? `<button type="button" id="change-ttl" data-open-dialog="ttl-dialog" disabled>${t("Change expiry")}</button>` : ""}
+          ${fixed || canManage ? '<hr>' : ""}
+          ${fixed
+            ? `<button type="button" id="clear-note" class="danger" disabled>${t("Clear note")}</button><button type="button" id="clear-files" class="danger" disabled>${t("Remove all files")}</button>`
+            : canManage ? `<button type="button" id="delete-pad" class="danger" disabled>${t("Delete space")}</button>` : ""}
         </div>
       </details>
     </div>
   </header>
 
   ${isEncrypted ? `<section class="access-panel" id="key-prompt" aria-labelledby="key-title" hidden>
-    <h2 id="key-title">Unlock this space</h2>
+    <h2 id="key-title">${t("Unlock this space")}</h2>
     <form id="key-form" class="passphrase-form">
-      <label>Passphrase
+      <label>${t("Passphrase")}
         <input name="passphrase" id="key-input" type="password" required autocomplete="off">
       </label>
-      <label class="checkbox-field"><input type="checkbox" id="remember-unlock"> Keep unlocked in this browser</label>
-      <button type="submit" class="primary">Unlock</button>
+      <label class="checkbox-field"><input type="checkbox" id="remember-unlock"> ${t("Keep unlocked in this browser")}</label>
+      <button type="submit" class="primary">${t("Unlock")}</button>
     </form>
     <p id="key-error" class="form-error" role="alert" hidden></p>
   </section>` : ""}
@@ -174,12 +198,12 @@ ${PAD_CSS}
   <dialog id="pin-dialog" aria-labelledby="pin-title">
     <section id="pin-unlock"${pad.pin ? "" : " hidden"}>
       <header class="dialog-head">
-        <h2 id="pin-title">Unlock editing</h2>
-        <button type="button" class="icon-button quiet" data-close-dialog aria-label="Close">${icon("close")}</button>
+        <h2 id="pin-title">${t("Unlock editing")}</h2>
+        <button type="button" class="icon-button quiet" data-close-dialog aria-label="${t("Close")}">${icon("close")}</button>
       </header>
       <form id="pin-form" class="pin-form">
-        <input name="pin" id="pin-input" aria-label="Editing PIN" type="password" inputmode="numeric" autocomplete="off" required maxlength="10" placeholder="Editing PIN">
-        <button type="submit" class="primary">Unlock editing</button>
+        <input name="pin" id="pin-input" aria-label="${t("Editing PIN")}" type="password" inputmode="numeric" autocomplete="off" required maxlength="10" placeholder="${t("Editing PIN")}">
+        <button type="submit" class="primary">${t("Unlock editing")}</button>
       </form>
       <p id="pin-error" class="form-error" role="alert" hidden></p>
     </section>
@@ -189,184 +213,189 @@ ${PAD_CSS}
   <p id="sync-error" role="alert" hidden></p>
   <div class="workspace" id="workspace"${isEncrypted ? " hidden" : ""}>
     <div class="workspace-toolbar" id="workspace-toolbar" hidden>
-      <div class="workspace-tabs" role="tablist" aria-label="Space content">
-        <button type="button" id="note-tab" role="tab" aria-controls="note-panel" aria-selected="true">Note</button>
-        <button type="button" id="files-tab" role="tab" aria-controls="files-card" aria-selected="false" tabindex="-1">Files (0)</button>
+      <div class="workspace-tabs" role="tablist" aria-label="${t("Space content")}">
+        <button type="button" id="note-tab" role="tab" aria-controls="note-panel" aria-selected="true">${t("Note")}</button>
+        <button type="button" id="files-tab" role="tab" aria-controls="files-card" aria-selected="false" tabindex="-1">${t("Files (0)")}</button>
       </div>
       <div class="actions workspace-actions">
         <div class="actions" id="note-tools">
+          <button type="button" class="quiet" id="code-view" aria-pressed="false">${t("Code view")}</button>
+          <button type="button" class="quiet" id="line-numbers" aria-pressed="false">${t("Line numbers")}</button>
           <span id="note-copy-status" role="status"></span>
-          <button type="button" class="quiet" id="copy-note" disabled>${icon("copy")} Copy text</button>
-          <button type="button" id="choose-files" disabled>${icon("plus")} Add files</button>
+          <button type="button" class="quiet" id="copy-note" disabled>${icon("copy")} ${t("Copy text")}</button>
+          <button type="button" id="choose-files" disabled>${icon("plus")} ${t("Add files")}</button>
         </div>
         <div id="files-tools">
-          <button type="button" id="copy-files-link" class="quiet">${icon("link")} Copy files link</button>
+          <button type="button" id="copy-files-link" class="quiet">${icon("link")} ${t("Copy files link")}</button>
         </div>
       </div>
-      <input type="file" id="attachment-input" multiple disabled hidden aria-label="Files to attach">
+      <input type="file" id="attachment-input" multiple disabled hidden aria-label="${t("Files to attach")}">
     </div>
     <div class="transfer-notice" id="upload-notice" hidden>
       <span role="status" id="upload-notice-text"></span>
-      <button type="button" class="quiet" id="show-upload">Show files</button>
+      <button type="button" class="quiet" id="show-upload">${t("Show files")}</button>
     </div>
     <p id="attachment-error" class="attachment-error" role="alert" hidden></p>
-    <ul id="attachment-uploads" aria-label="Transfers"></ul>
+    <ul id="attachment-uploads" aria-label="${t("Transfers")}"></ul>
     <section class="card note-card" id="note-panel" role="tabpanel" aria-labelledby="note-tab" hidden>
-      <h2 id="note-title" class="visually-hidden">Note</h2>
+      <h2 id="note-title" class="visually-hidden">${t("Note")}</h2>
       <div id="note"></div>
     </section>
     <section class="card files-pane" id="files-card" role="tabpanel" aria-labelledby="files-tab" tabindex="0" hidden>
       <div class="files-body">
         <button type="button" class="drop-zone" id="file-drop" hidden disabled>
           ${icon("plus")}
-          <span class="drop-zone-title">Choose files</span>
-          <span class="drop-zone-hint">Or drop files here</span>
+          <span class="drop-zone-title">${t("Choose files")}</span>
+          <span class="drop-zone-hint">${t("Or drop files here")}</span>
         </button>
-        <ul id="attachments" aria-label="Uploaded files"></ul>
-        <p class="files-empty" id="files-empty" hidden>No files yet.</p>
+        <ul id="attachments" aria-label="${t("Uploaded files")}"></ul>
+        <p class="files-empty" id="files-empty" hidden>${t("No files yet.")}</p>
       </div>
     </section>
     <footer class="workspace-footer">
-      <span id="sync-status" role="status">Connecting…</span>
-      <button type="button" id="unlock-editing" class="quiet" data-open-dialog="pin-dialog" hidden>Unlock editing</button>
+      <span id="sync-status" role="status">${t("Connecting…")}</span>
+      <button type="button" id="unlock-editing" class="quiet" data-open-dialog="pin-dialog" hidden>${t("Unlock editing")}</button>
     </footer>
   </div>
 
   <dialog id="replace-note-dialog" aria-labelledby="replace-note-title" aria-describedby="replace-note-description">
-    <h2 id="replace-note-title">Replace note?</h2>
-    <p id="replace-note-description">Replace the entire note with the text from your clipboard?</p>
+    <h2 id="replace-note-title">${t("Replace note?")}</h2>
+    <p id="replace-note-description">${t("Replace the entire note with the text from your clipboard?")}</p>
     <form method="dialog" class="dialog-actions">
-      <button type="submit" value="cancel" autofocus>Cancel</button>
-      <button type="submit" value="replace" class="primary">Replace note</button>
+      <button type="submit" value="cancel" autofocus>${t("Cancel")}</button>
+      <button type="submit" value="replace" class="primary">${t("Replace note")}</button>
     </form>
   </dialog>
 
   <dialog id="new-pad-dialog" aria-labelledby="new-pad-title">
     <header class="dialog-head">
-      <h2 id="new-pad-title">New space</h2>
-      <button type="button" class="icon-button quiet" data-close-dialog aria-label="Close">${icon("close")}</button>
+      <h2 id="new-pad-title">${t("New space")}</h2>
+      <button type="button" class="icon-button quiet" data-close-dialog aria-label="${t("Close")}">${icon("close")}</button>
     </header>
     <form id="new-pad-form">
+      <label>${t("Space name (optional)")}
+        <input name="slug" id="new-pad-slug" placeholder="${t("Generated automatically")}" autocomplete="off" spellcheck="false" maxlength="63">
+      </label>
       <label class="new-pad-encrypted">
         <input type="checkbox" id="new-pad-encrypted">
-        <span>End-to-end encryption <small>A passphrase is required to open this space.</small></span>
+        <span>${t("End-to-end encryption")} <small>${t("A passphrase is required to open this space.")}</small></span>
       </label>
-      <label id="create-passphrase-field" hidden>Passphrase
-        <input id="create-passphrase" type="password" autocomplete="new-password" minlength="12" maxlength="1024">
-        <small>Use at least 12 characters. There is no reset.</small>
-      </label>
-      <label>Expires after
-        <select name="ttl" id="new-pad-ttl">${ttlOptions(options.defaultTtlSeconds, options.maxTtlSeconds)}</select>
-      </label>
+      <div id="create-passphrase-field" hidden>
+        <label>${t("Passphrase")}
+          <input id="create-passphrase" type="password" autocomplete="new-password" minlength="12" maxlength="1024">
+          <small>${t("Use at least 12 characters. There is no reset.")}</small>
+        </label>
+        <div class="actions passphrase-actions">
+          <button type="button" id="suggest-passphrase">${t("Suggest passphrase")}</button>
+          <button type="button" id="show-passphrase">${t("Show passphrase")}</button>
+        </div>
+      </div>
       <details class="advanced-options">
-      <summary>More options</summary>
-      <label>Name (optional)
-        <input name="slug" id="new-pad-slug" placeholder="Generated automatically" autocomplete="off" spellcheck="false">
-      </label>
-      <label>Editing PIN (optional)
-        <input name="padPin" id="new-pad-pad-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="10" placeholder="4–10 digits">
-      </label>
+        <summary>${t("More options")} <span id="new-pad-expiry-summary"></span></summary>
+        <label>${t("Expires after")}
+          <select name="ttl" id="new-pad-ttl">${ttlOptions(options.defaultTtlSeconds, options.maxTtlSeconds, language)}</select>
+        </label>
+        <label>${t("Editing PIN (optional)")}
+          <input name="padPin" id="new-pad-pad-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="10" placeholder="4–10 digits">
+        </label>
       </details>
       ${options.instancePinRequired ? `
-      <label>Instance PIN
+      <label>${t("Instance PIN")}
         <input name="pin" id="new-pad-pin" type="password" required autocomplete="off">
       </label>` : ""}
       <p id="new-pad-error" class="form-error" role="alert" hidden></p>
-      <button type="submit" class="primary">Create space</button>
+      <button type="submit" class="primary">${t("Create space")}</button>
     </form>
   </dialog>
 
-  <dialog id="my-pads-dialog" aria-labelledby="my-pads-title">
+  ${username ? `<dialog id="my-pads-dialog" aria-labelledby="my-pads-title">
     <header class="dialog-head">
-      <h2 id="my-pads-title">Saved spaces</h2>
-      <button type="button" class="icon-button quiet" data-close-dialog aria-label="Close">${icon("close")}</button>
+      <h2 id="my-pads-title">${t("Bookmarks")}</h2>
+      <button type="button" class="icon-button quiet" data-close-dialog aria-label="${t("Close")}">${icon("close")}</button>
     </header>
-    <p>${username ? "Bookmarks saved in this browser." : "Spaces created in this browser and bookmarks. Encrypted spaces require their passphrase."}</p>
-    ${username ? "" : sharedSpace}
+    <p>${t("Bookmarks saved in this browser.")}</p>
     <ul id="my-pads-list"></ul>
-    <p class="files-empty" id="my-pads-empty" hidden>No saved spaces yet.</p>
+    <p class="files-empty" id="my-pads-empty" hidden>${t("No bookmarks yet.")}</p>
     <div class="dialog-actions">
-      <button type="button" id="clear-my-pads" hidden>Clear bookmarks</button>
+      <button type="button" id="clear-my-pads" hidden>${t("Clear bookmarks")}</button>
     </div>
-  </dialog>
+  </dialog>` : ""}
 
-  ${username ? `<dialog id="owned-spaces-dialog" aria-labelledby="owned-spaces-title">
+  <dialog id="owned-spaces-dialog" aria-labelledby="owned-spaces-title">
     <header class="dialog-head">
-      <h2 id="owned-spaces-title">My spaces</h2>
-      <button type="button" class="icon-button quiet" data-close-dialog aria-label="Close">${icon("close")}</button>
+      <h2 id="owned-spaces-title">${t("My spaces")}</h2>
+      <button type="button" class="icon-button quiet" data-close-dialog aria-label="${t("Close")}">${icon("close")}</button>
     </header>
-    ${sharedSpace}
+    ${defaultSpace}
     <ul class="account-list" id="owned-spaces-list"></ul>
     <p class="files-empty" id="owned-spaces-status" role="status"></p>
-  </dialog>` : ""}
+  </dialog>
 
   ${username && canManage && !fixed ? `<dialog id="space-access-dialog" aria-labelledby="space-access-title">
     <header class="dialog-head">
-      <h2 id="space-access-title">Manage access</h2>
-      <button type="button" class="icon-button quiet" data-close-dialog aria-label="Close">${icon("close")}</button>
+      <h2 id="space-access-title">${t("Manage access")}</h2>
+      <button type="button" class="icon-button quiet" data-close-dialog aria-label="${t("Close")}">${icon("close")}</button>
     </header>
     <section id="space-access-requests" aria-labelledby="space-access-requests-title" hidden>
-      <h3 id="space-access-requests-title">Access requests</h3>
+      <h3 id="space-access-requests-title">${t("Access requests")}</h3>
       <ul class="account-list" id="space-access-request-list"></ul>
     </section>
     <form id="space-access-form" class="passphrase-form">
-      <label>Username <input name="username" required maxlength="128" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
-      <label>Permission
-        <select name="role"><option value="read">Can read</option><option value="edit">Can edit</option></select>
+      <label>${t("Username")} <input name="username" required maxlength="128" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+      <label>${t("Permission")}
+        <select name="role"><option value="read">${t("Can read")}</option><option value="edit">${t("Can edit")}</option></select>
       </label>
-      <button type="submit" class="primary">Save access</button>
+      <button type="submit" class="primary">${t("Save access")}</button>
     </form>
     <p id="space-access-status" role="status"></p>
     <ul class="account-list" id="space-access-list"></ul>
   </dialog>` : ""}
 
-  <dialog id="one-time-link" aria-labelledby="one-time-title">
-    <h2 id="one-time-title">Space created</h2>
-    ${username ? '<p>This space is private. Use Manage access in the space menu to share it.</p>' : ""}
-    <p id="created-encrypted-hint" hidden>Share the passphrase separately. The passphrase cannot be recovered.</p>
-    <input id="one-time-link-url" aria-label="Share link" readonly>
-    <p id="one-time-status" role="status"></p>
-    <div class="dialog-actions">
-      <button type="button" id="one-time-copy">Copy link</button>
-      <button type="button" id="one-time-password" hidden>Copy passphrase</button>
-      <button type="button" class="primary" id="one-time-open">Open space</button>
-    </div>
-  </dialog>
-
   <dialog id="ttl-dialog" aria-labelledby="ttl-title">
     <header class="dialog-head">
-      <h2 id="ttl-title">Change expiry</h2>
-      <button type="button" class="icon-button quiet" data-close-dialog aria-label="Close">${icon("close")}</button>
+      <h2 id="ttl-title">${t("Change expiry")}</h2>
+      <button type="button" class="icon-button quiet" data-close-dialog aria-label="${t("Close")}">${icon("close")}</button>
     </header>
     <form id="ttl-form">
-      <label>Expires after
-        <select id="manage-ttl">${ttlOptions(options.defaultTtlSeconds, options.maxTtlSeconds)}</select>
+      <label>${t("Expires after")}
+        <select id="manage-ttl">${ttlOptions(options.defaultTtlSeconds, options.maxTtlSeconds, language)}</select>
       </label>
       <p id="ttl-error" class="form-error" role="alert" hidden></p>
-      <div class="dialog-actions"><button type="submit" class="primary">Save expiry</button></div>
+      <div class="dialog-actions"><button type="submit" class="primary">${t("Save expiry")}</button></div>
     </form>
   </dialog>
 
   <dialog id="pad-qr-dialog" aria-labelledby="pad-qr-title">
     <header class="dialog-head">
-      <h2 id="pad-qr-title">Open on another device</h2>
-      <button type="button" class="icon-button quiet" data-close-dialog aria-label="Close">${icon("close")}</button>
+      <h2 id="pad-qr-title">${t("Open on another device")}</h2>
+      <button type="button" class="icon-button quiet" data-close-dialog aria-label="${t("Close")}">${icon("close")}</button>
     </header>
-    <canvas id="pad-qr" aria-label="QR code for this space" role="img" hidden></canvas>
-    <p id="pad-qr-error" class="form-error" role="alert" hidden>Could not generate the QR code. Use the link below.</p>
+    <div id="share-secret-options" hidden>
+      <label class="checkbox-field"><input type="checkbox" id="include-passphrase"> ${t("Include passphrase")}</label>
+      <p id="share-secret-warning" hidden>${t("The link and QR code contain the passphrase. Share them only with people who should be able to unlock this space.")}</p>
+    </div>
+    <canvas id="pad-qr" aria-label="${t("QR code for this space")}" role="img" hidden></canvas>
+    <p id="pad-qr-error" class="form-error" role="alert" hidden>${t("Could not generate the QR code. You can still copy the link.")}</p>
     <a id="pad-qr-link"></a>
-    ${isEncrypted ? '<p>Enter the passphrase on the other device.</p>' : ""}
+    ${isEncrypted ? `<p id="qr-passphrase-hint">${t("Enter the passphrase on the other device.")}</p>` : ""}
+    <div class="dialog-actions qr-actions">
+      <button type="button" id="qr-copy-link">${t("Copy link")}</button>
+      <button type="button" id="qr-copy-image" disabled>${t("Copy QR image")}</button>
+      <button type="button" id="qr-save-image" disabled>${t("Download PNG")}</button>
+      <button type="button" id="qr-copy-passphrase" hidden>${t("Copy passphrase")}</button>
+    </div>
+    <p id="qr-status" role="status"></p>
   </dialog>
 
   <dialog id="image-dialog" aria-labelledby="image-title">
     <header class="dialog-head">
       <h2 id="image-title"></h2>
-      <button type="button" class="icon-button quiet" data-close-dialog aria-label="Close">${icon("close")}</button>
+      <button type="button" class="icon-button quiet" data-close-dialog aria-label="${t("Close")}">${icon("close")}</button>
     </header>
     <img id="full-image" alt="">
     <div class="dialog-actions">
       <p id="image-copy-status" role="status"></p>
-      <button type="button" id="copy-image" disabled>Copy image</button>
+      <button type="button" id="copy-image" disabled>${t("Copy image")}</button>
     </div>
   </dialog>
 </main>
@@ -383,44 +412,44 @@ ${PAD_CSS}
  * presets and "never". The instance default is preselected; MAX_TTL caps
  * the list — presets above the bound and "never" are not offered.
  */
-function ttlOptions(defaultTtlSeconds: number | null, maxTtlSeconds: number | null): string {
+function ttlOptions(defaultTtlSeconds: number | null, maxTtlSeconds: number | null, language: Language): string {
+  const t = (message: string, values?: Record<string, string | number>) => escapeHtml(translate(language, message, values));
   const presets: Array<{ value: number; label: string }> = [
     { value: 3_600, label: "1 hour" },
     { value: 86_400, label: "24 hours" },
     { value: 604_800, label: "7 days" },
     { value: 2_592_000, label: "30 days" },
   ];
-  const defaultLabel = defaultTtlSeconds === null ? "Instance default (no expiry)" : `Instance default (${describeDuration(defaultTtlSeconds)})`;
+  const defaultLabel = defaultTtlSeconds === null ? t("Instance default (no expiry)") : t("Instance default ({duration})", { duration: describeDuration(defaultTtlSeconds, language) });
   const options = [`<option value="default" selected>${defaultLabel}</option>`];
   for (const preset of presets) {
     if (maxTtlSeconds !== null && preset.value > maxTtlSeconds) continue;
-    options.push(`<option value="${preset.value}">${preset.label}</option>`);
+    options.push(`<option value="${preset.value}">${t(preset.label)}</option>`);
   }
   if (maxTtlSeconds === null) {
-    options.push(`<option value="never">never</option>`);
+    options.push(`<option value="never">${t("Never")}</option>`);
   }
   return options.join("");
 }
 
-function describeDuration(seconds: number): string {
-  if (seconds % 86_400 === 0) return plural(seconds / 86_400, "day");
-  if (seconds % 3_600 === 0) return plural(seconds / 3_600, "hour");
-  if (seconds % 60 === 0) return plural(seconds / 60, "minute");
-  return plural(seconds, "second");
-}
-
-function plural(count: number, unit: string): string {
-  return `${count} ${unit}${count === 1 ? "" : "s"}`;
+function describeDuration(seconds: number, language: Language): string {
+  const format = (value: number, unit: string) =>
+    new Intl.NumberFormat(language, { style: "unit", unit, unitDisplay: "long" }).format(value);
+  if (seconds % 86_400 === 0) return format(seconds / 86_400, "day");
+  if (seconds % 3_600 === 0) return format(seconds / 3_600, "hour");
+  if (seconds % 60 === 0) return format(seconds / 60, "minute");
+  return format(seconds, "second");
 }
 
 /** The page shown for a Slug that has no Pad (expired or never existed). */
-export function renderNotFoundPage(access?: { action: string; requested: boolean; spacePath: string }): string {
+export function renderNotFoundPage(access?: { action: string; requested: boolean; spacePath: string }, language: Language = "en"): string {
+  const t = (message: string) => escapeHtml(translate(language, message));
   return `<!doctype html>
-<html lang="en">
+<html lang="${language}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Space not found – Dropnote</title>
+<title>${t("Space not found")} – Dropnote</title>
 <script>${THEME_RESTORE_SCRIPT}</script>
 <style>
 ${THEME_CSS}
@@ -431,15 +460,15 @@ ${THEME_CSS}
 </head>
 <body>
 <main>
-<h1>${access ? "Space unavailable" : "Space not found"}</h1>
+<h1>${t(access ? "Space unavailable" : "Space not found")}</h1>
 ${access
   ? access.requested
-    ? `<p role="status">If the space is available, your request has been sent to its owner.</p>
-<p><a href="${escapeHtml(access.spacePath)}">Try opening the space again</a></p>`
-    : `<p>This space may be unavailable or require permission to open.</p>
-<form method="post" action="${escapeHtml(access.action)}"><button type="submit">Request access</button></form>`
-  : "<p>There’s no space at this address. It may have expired, been deleted, or never existed.</p>"}
-<p><a href="/default">Open Default</a> or create a new space from there.</p>
+    ? `<p role="status">${t("If the space is available, your request has been sent to its owner.")}</p>
+<p><a href="${escapeHtml(access.spacePath)}">${t("Try opening the space again")}</a></p>`
+    : `<p>${t("This space may be unavailable or require permission to open.")}</p>
+<form method="post" action="${escapeHtml(access.action)}"><button type="submit">${t("Request access")}</button></form>`
+  : `<p>${t("There’s no space at this address. It may have expired, been deleted, or never existed.")}</p>`}
+<p><a href="/default">${t("Open Default")}</a> ${t("or create a new space from there.")}</p>
 </main>
 </body>
 </html>

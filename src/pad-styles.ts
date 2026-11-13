@@ -131,10 +131,12 @@ export const PAD_CSS = `
   #new-pad-form .new-pad-encrypted { display: flex; align-items: flex-start; gap: .6rem; padding: .65rem; background: var(--panel); border-radius: .45rem; }
   .new-pad-encrypted input { accent-color: var(--accent); margin: .3rem 0 0; }
   .new-pad-encrypted small { display: block; font-weight: 400; color: var(--muted); }
-  #one-time-link { width: min(40rem, calc(100vw - 2rem)); }
-  #one-time-link-url { width: 100%; margin-top: .75rem; font-family: ui-monospace, monospace; }
+  #new-pad-dialog, #pad-qr-dialog { width: min(34rem, calc(100vw - 2rem)); }
   #my-pads-list, .account-list { max-height: 45vh; overflow-y: auto; }
   #my-pads-list li, .account-list li { display: flex; align-items: center; justify-content: space-between; gap: .5rem; border-bottom: 1px solid var(--border); padding: .4rem .25rem; }
+  #owned-spaces-list li { flex-wrap: wrap; }
+  #owned-spaces-list li .my-pad-detail { flex-basis: 100%; order: 1; }
+  #owned-spaces-list li .my-pad-detail:empty { display: none; }
   .account-list li > :first-child { min-width: 0; overflow-wrap: anywhere; }
   #my-pads-list a { overflow-wrap: anywhere; }
 
@@ -147,7 +149,18 @@ export const PAD_CSS = `
   .menu-items a:hover { background: var(--panel); }
   .menu-items .danger { color: var(--error); }
   .pad-notice { color: var(--muted); margin-bottom: .75rem; }
-  #start-pad-marker { color: var(--accent); }
+  .start-marker { display: inline-flex; align-items: center; gap: .3rem; width: fit-content; padding: .15rem .4rem; color: var(--accent); background: var(--accent-soft); border-radius: .25rem; font-size: .8rem; font-weight: 600; }
+  .start-marker svg { width: .85rem; height: .85rem; }
+  .menu-items hr { border: 0; border-top: 1px solid var(--border); margin: .25rem 0; }
+  #note-tools button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+  #note .cm-gutters { background: var(--panel); color: var(--muted); border-color: var(--border); }
+  #note .cm-lineNumbers .cm-gutterElement { padding-inline: .55rem; }
+  #note .cm-gutters .cm-gutter { padding-block: 1rem; }
+  .passphrase-actions { margin-top: .4rem; }
+  #new-pad-expiry-summary { margin-inline-start: .5rem; color: var(--muted); }
+  #share-secret-options { margin-bottom: .8rem; }
+  #share-secret-warning { color: var(--muted); }
+  #qr-status:empty { display: none; }
   .access-panel .passphrase-form { display: grid; justify-items: start; }
   .passphrase-form label:first-child { display: grid; gap: .25rem; width: min(100%, 25rem); }
   .checkbox-field { display: flex; align-items: center; gap: .35rem; }
@@ -157,7 +170,7 @@ export const PAD_CSS = `
   .advanced-options label { margin-top: .6rem; }
   #new-pad-form small { font-weight: 400; color: var(--muted); }
   #ttl-form label { display: grid; gap: .3rem; }
-  #pad-qr { display: block; max-width: 100%; height: auto; margin: 0 auto .8rem; border-radius: .3rem; }
+  #pad-qr { display: block; width: min(280px, 100%); height: auto; margin: 0 auto .8rem; border-radius: .3rem; }
   #pad-qr-link { display: block; margin-bottom: .4rem; overflow-wrap: anywhere; font-size: .875rem; }
   #image-dialog { width: min(58rem, calc(100vw - 2rem)); }
   #image-title { overflow-wrap: anywhere; }

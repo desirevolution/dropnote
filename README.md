@@ -69,11 +69,11 @@ Browser bookmarks, start-page choices and remembered keys from the previous buil
 
 | Task | In the app |
 | --- | --- |
-| Open the shared workspace | Select **Default** in **My spaces**. In single-user mode, look in **Saved spaces**. This opens `/default` directly. |
-| Open or change your start page | **Home** opens your start page. Use **⋯ → Set as start page** to change it or **Reset start page** on the selected space to use **Default** as your start page. The old start page stays in **Saved spaces**. |
-| Create a space | **New space** offers encryption and expiry. **More options** has the optional name and editing PIN. A generated address looks like `/p/amber-otter`. |
-| Return to a space | **Saved spaces** shows bookmarks. In single-user mode it also lists spaces created in this browser until they are deleted or expire. In multiuser mode, **My spaces** lists the spaces you own across devices. |
-| Share a link | Use **Copy link** or **QR code**. In multiuser mode, grant access under **⋯ → Manage access** or let the recipient request it when opening the link. Give recipients the passphrase separately for encrypted spaces. |
+| Open Default | **My spaces** lists **Default** first and opens it directly at `/default`. |
+| Choose your start page | **Home** opens your browser's start page. Use **⋯ → Set as start page** to change it. **Reset start page** switches back to **Default**. A house marks the current start page. |
+| Create a space | **New space** offers an optional name and encryption. **More options** contains expiry and the editing PIN. After creation the new space opens immediately. |
+| Find a space | **My spaces** lists all active spaces in single-user mode and the spaces you own in multiuser mode. In multiuser mode, use **⋯ → Bookmark space** on a space shared with you to add it to **Bookmarks** on this browser. |
+| Share a space | Use **Copy link** or **⋯ → QR code**. Copy the QR image where the browser supports it or download it as a PNG. In multiuser mode, grant access via **Manage access** or let the recipient request it. |
 | Edit or copy the note | Use the full-width **Note** tab and **Copy text**. Spaces containing only files open the **Files** tab. |
 | Download the note | **⋯ → Download text (.txt)** saves a local UTF-8 text file named after the space address and the Unix timestamp in milliseconds, for example `project-notes-1794552905123.txt`. The downloaded file is plaintext, including when the note is encrypted in Dropnote. |
 | Share a screenshot or file | Use **Add files** in the Note tab, click or drop files on **Choose files** in the Files tab, or paste an image into the editor or anywhere in the Files tab. Transfers and retries are visible in both tabs. The file list shows the newest uploads first. Use **Copy files link** to open the Files tab directly. Open an image preview and choose **Copy image** to copy the full-resolution image as PNG. Clipboard access depends on browser support and permission. |
@@ -86,7 +86,11 @@ The note saves automatically and shows other active cursors. The editor shows **
 
 ### Encrypted spaces
 
-Enter a passphrase of at least 12 characters during creation. The completion dialog lets you copy the link and passphrase separately. The link is the Pad's address. The browser derives the Key locally from the passphrase and verifies it before connecting. Opening or reloading asks for the passphrase by default. **Keep unlocked in this browser** saves the derived Key for that Pad. **Lock space** forgets it and locks open tabs in the same browser profile.
+Use a passphrase of at least 12 characters or let Dropnote suggest six random words. The interface, suggested words and generated space names follow the browser's German or English preference, with English as the fallback.
+
+The browser derives the encryption key locally. The new space opens unlocked after creation. During that visit, **⋯ → QR code** offers **Copy passphrase** and **Include passphrase**. The second option embeds the passphrase in the copied link and QR code. The browser consumes it from the URL fragment to unlock the space. Anyone who obtains the full link or QR code has the passphrase. Multiuser access rules still apply. The top-level **Copy link** action always copies the address alone.
+
+**Keep unlocked in this browser** saves the derived key for future visits. **Lock space** forgets the key and locks open tabs in the same browser profile. After leaving, reloading or locking the page, the original passphrase is only available from wherever you saved it.
 
 The passphrase is fixed for the lifetime of a Pad. Save it somewhere safe, as the instance cannot reset or recover it. This version uses the passphrase format for all Encrypted Pads. Older Pads created with a Key in the link cannot be opened in this version. There is no automatic migration of their stored data.
 
@@ -260,6 +264,6 @@ The test harness starts the real server as a child process (fresh `DATA_DIR`, ep
 
 `test/deployment.test.ts` is the deployment smoke test: it builds the Docker image, boots a container with a temporary data volume, runs the API smoke facts against it (root serves the Default Pad page, JSON 404 shape), verifies the non-root UID and the data-dir ownership contract, asserts that a wrongly-owned directory fails boot with the permission error, and that data in the volume survives container replacement. It skips cleanly when Docker is unavailable; the first run builds the image (minutes), later runs reuse the layer cache.
 
-The editor uses CodeMirror and Yjs, bundled with esbuild. The generated bundle is excluded from Git. Run `npm run build` to refresh it while the server is running. The Docker image builds and includes its own bundle.
+The editor wraps text by default. Use **Code view** for horizontal scrolling and toggle **Line numbers** independently. Both choices apply to the current page visit. The editor uses CodeMirror and Yjs, bundled with esbuild. The generated bundle is excluded from Git. Run `npm run build` to refresh it while the server is running. The Docker image builds and includes its own bundle.
 
 See the [glossary](GLOSSARY.md), the [encryption design](docs/adr/0001-client-side-e2e-zero-knowledge.md) and the [Live-Sync design](docs/adr/0002-yjs-live-sync-encrypted-relay.md).

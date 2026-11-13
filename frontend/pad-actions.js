@@ -1,5 +1,6 @@
 import { createEncryption } from "./passphrase.js";
-import { rememberPad } from "./pad-navigation.js";
+import { language, t } from "./i18n.js";
+import { openCreatedSpace } from "./share-secret.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -25,7 +26,7 @@ export async function copyText(text, status, success) {
     }
     status.textContent = success;
   } catch {
-    status.textContent = "Copy failed.";
+    status.textContent = t("Copy failed.");
   }
 }
 
@@ -35,7 +36,7 @@ export function ttlChoice(element) {
   return { ttl: value === "never" ? value : Number(value) };
 }
 
-export function initPadActions(username) {
+export function initPadActions() {
   document.querySelectorAll("[data-open-dialog]").forEach((button) => {
     button.addEventListener("click", () => $(button.dataset.openDialog).showModal());
   });
@@ -61,16 +62,67 @@ export function initPadActions(username) {
   const passphrase = $("create-passphrase");
   const error = $("new-pad-error");
   const submit = form.querySelector('button[type="submit"]');
-  const result = $("one-time-link");
-  const link = $("one-time-link-url");
-  const copyPassword = $("one-time-password");
-  const status = $("one-time-status");
-  let createdPassphrase = "";
+  const expiry = $("new-pad-ttl");
+  const suggest = $("suggest-passphrase");
+  const reveal = $("show-passphrase");
+  const dialog = form.closest("dialog");
+  let wordList;
+  let revision = 0;
+
+  function showPassphrase(show) {
+    passphrase.type = show ? "text" : "password";
+    reveal.textContent = t(show ? t("Hide passphrase") : t("Show passphrase"));
+  }
+  reveal.addEventListener("click", () => showPassphrase(passphrase.type === "password"));
+  dialog.addEventListener("close", () => {
+    revision += 1;
+    passphrase.value = "";
+    showPassphrase(false);
+  });
+  function syncExpiry() {
+    $("new-pad-expiry-summary").textContent = expiry.selectedOptions[0]?.textContent ?? "";
+  }
+  expiry.addEventListener("change", syncExpiry);
+  syncExpiry();
+  suggest.addEventListener("click", async () => {
+    const current = revision;
+    suggest.disabled = true;
+    error.hidden = true;
+    try {
+      if (!crypto.subtle) throw new Error();
+      wordList ??= fetch(`/api/words/${language()}`).then(async (response) => {
+        if (!response.ok) throw new Error();
+        return (await response.text()).trim().split("\n");
+      }).catch((error) => {
+        wordList = undefined;
+        throw error;
+      });
+      const words = await wordList;
+      if (!Array.isArray(words) || words.length < 2) throw new Error();
+      if (revision !== current || !dialog.open || !encrypted.checked || submit.disabled) return;
+      passphrase.value = randomPassphrase(words);
+      showPassphrase(true);
+    } catch {
+      if (revision === current) {
+        error.textContent = t("Could not suggest a passphrase.");
+        error.hidden = false;
+      }
+    } finally {
+      suggest.disabled = false;
+    }
+  });
   function syncChoice() {
     $("create-passphrase-field").hidden = !encrypted.checked;
     passphrase.required = encrypted.checked;
   }
-  encrypted.addEventListener("change", syncChoice);
+  encrypted.addEventListener("change", () => {
+    revision += 1;
+    if (!encrypted.checked) {
+      passphrase.value = "";
+      showPassphrase(false);
+    }
+    syncChoice();
+  });
   syncChoice();
 
   form.addEventListener("submit", async (event) => {
@@ -78,18 +130,18 @@ export function initPadActions(username) {
     if (submit.disabled) return;
     error.hidden = true;
     submit.disabled = true;
-    const secret = encrypted.checked ? passphrase.value : "";
+    const secret = encrypted.checked ? passphrase.value : null;
+    const slug = $("new-pad-slug").value.trim().toLowerCase();
+    const pin = $("new-pad-pad-pin").value.trim();
+    const instancePin = $("new-pad-pin")?.value.trim();
     try {
-      const body = ttlChoice($("new-pad-ttl"));
-      if (encrypted.checked) {
-        if (!crypto.subtle) throw new Error("Encrypted spaces require HTTPS or localhost.");
-        if (secret.trim().length < 12) throw new Error("Use a passphrase with at least 12 characters.");
+      const body = ttlChoice(expiry);
+      if (secret !== null) {
+        if (!crypto.subtle) throw new Error(t("Encrypted spaces require HTTPS or localhost."));
+        if (secret.trim().length < 12) throw new Error(t("Use a passphrase with at least 12 characters."));
         body.encrypted = true;
         body.encryption = await createEncryption(secret);
       }
-      const slug = $("new-pad-slug").value.trim().toLowerCase();
-      const pin = $("new-pad-pad-pin").value.trim();
-      const instancePin = $("new-pad-pin")?.value.trim();
       if (slug) body.slug = slug;
       if (pin) body.pin = pin;
       if (instancePin) body.instancePin = instancePin;
@@ -98,29 +150,36 @@ export function initPadActions(username) {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
       });
       const pad = await response.json();
-      if (!response.ok) throw new Error(pad.error ?? "Could not create the space.");
-      if (!username) rememberPad(pad, true);
-      createdPassphrase = secret;
-      copyPassword.hidden = $("created-encrypted-hint").hidden = !secret;
-      link.value = new URL(pad.path, location.origin).href;
-      status.textContent = "";
+      if (!response.ok) {
+        let message = pad.error ?? "Could not create the space.";
+        if (response.status === 409) message = "A space with this name already exists.";
+        if (response.status === 400 && message.includes("not a valid Slug")) {
+          throw new Error(t("The space name is invalid. Use up to {count} letters, digits and single hyphens.", { count: 63 }));
+        }
+        if (response.status === 400 && message.includes("is reserved for the site's own routes")) message = "This name is reserved.";
+        throw new Error(t(message));
+      }
       form.reset();
       syncChoice();
-      form.closest("dialog").close();
-      result.showModal();
-      link.select();
+      syncExpiry();
+      if (dialog.open) dialog.close();
+      openCreatedSpace(pad, secret);
     } catch (cause) {
-      error.textContent = cause.message || "Could not create the space.";
+      error.textContent = t(cause.message || "Could not create the space.");
       error.hidden = false;
     } finally {
       submit.disabled = false;
     }
   });
-  $("one-time-copy").addEventListener("click", () => copyText(link.value, status, "Link copied."));
-  copyPassword.addEventListener("click", () => copyText(createdPassphrase, status, "Passphrase copied."));
-  $("one-time-open").addEventListener("click", () => location.assign(link.value));
-  result.addEventListener("close", () => {
-    createdPassphrase = "";
-    link.value = "";
-  });
+}
+
+function randomPassphrase(words) {
+  const limit = 2 ** 32 - (2 ** 32 % words.length);
+  const random = new Uint32Array(1);
+  return Array.from({ length: 6 }, () => {
+    do {
+      crypto.getRandomValues(random);
+    } while (random[0] >= limit);
+    return words[random[0] % words.length];
+  }).join(" ");
 }

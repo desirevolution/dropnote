@@ -1,12 +1,14 @@
 import { spaceLabel } from "../src/space-label.ts";
-import { dateLabel } from "./pad-navigation.js";
+import { dateLabel, isStartPad, startBadge } from "./pad-navigation.js";
+
+import { t } from "./i18n.js";
 
 const $ = (id) => document.getElementById(id);
 
 async function getJson(url, options) {
   const response = await fetch(url, { cache: "no-store", ...options });
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || "The request failed.");
+  if (!response.ok) throw new Error(result.error ? t(result.error) : t("The request failed."));
   return result;
 }
 
@@ -18,11 +20,12 @@ export function initSpaceAccess(api) {
   document.querySelector('[data-open-dialog="owned-spaces-dialog"]').addEventListener("click", async () => {
     const load = ++loadNumber;
     owned.replaceChildren();
-    ownedStatus.textContent = "Loading…";
+    ownedStatus.textContent = t("Loading…");
     try {
       const { spaces } = await getJson("/api/my-spaces");
       if (load !== loadNumber) return;
-      ownedStatus.textContent = spaces.length ? "" : "You haven't created any spaces yet.";
+      ownedStatus.textContent = spaces.length ? "" : t("You haven't created any spaces yet.");
+      spaces.sort((a, b) => Number(isStartPad(b)) - Number(isStartPad(a)));
       for (const space of spaces) {
         const row = document.createElement("li");
         const link = document.createElement("a");
@@ -31,15 +34,18 @@ export function initSpaceAccess(api) {
         link.textContent = spaceLabel(space.slug);
         detail.className = "my-pad-detail";
         detail.textContent = [
-          space.encrypted ? "Encrypted" : "",
-          space.expiresAt ? `Expires ${dateLabel(space.expiresAt)}` : "",
+          space.sharedWith.length ? t("Shared with {name}", {
+            name: space.sharedWith[0] + (space.sharedWith.length > 1 ? ` +${space.sharedWith.length - 1}` : ""),
+          }) : "",
+          space.encrypted ? t("Encrypted") : "",
+          space.expiresAt ? t("Expires {date}", { date: dateLabel(space.expiresAt) }) : "",
         ].filter(Boolean).join(" · ");
-        row.append(link, detail);
+        row.append(link, startBadge(space), detail);
         if (space.accessRequestCount > 0) {
           const requests = document.createElement("a");
           requests.href = `${space.path}#space-access-dialog`;
-          requests.textContent = `${space.accessRequestCount} access ${space.accessRequestCount === 1 ? "request" : "requests"}`;
-          requests.setAttribute("aria-label", `${requests.textContent} for ${link.textContent}`);
+          requests.textContent = t(space.accessRequestCount === 1 ? "{count} access request" : "{count} access requests", { count: space.accessRequestCount });
+          requests.setAttribute("aria-label", t("{label} for {name}", { label: requests.textContent, name: link.textContent }));
           if (openAccess && location.pathname === space.path) {
             requests.addEventListener("click", (event) => {
               if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -53,7 +59,7 @@ export function initSpaceAccess(api) {
         owned.append(row);
       }
     } catch {
-      if (load === loadNumber) ownedStatus.textContent = "My spaces could not be loaded.";
+      if (load === loadNumber) ownedStatus.textContent = t("My spaces could not be loaded.");
     }
   });
 
@@ -71,7 +77,7 @@ export function initSpaceAccess(api) {
     if (busy) return;
     busy = true;
     submit.disabled = true;
-    status.textContent = "Working…";
+    status.textContent = t("Working…");
     try {
       const { grants, requests } = await operation();
       requestList.replaceChildren(...requests.map(({ id, username }) => {
@@ -83,14 +89,14 @@ export function initSpaceAccess(api) {
         for (const [label, role] of [["Allow reading", "read"], ["Allow editing", "edit"], ["Decline", null]]) {
           const button = document.createElement("button");
           button.type = "button";
-          button.textContent = label;
-          button.setAttribute("aria-label", `${label} for ${username}`);
+          button.textContent = t(label);
+          button.setAttribute("aria-label", t("{label} for {name}", { label: t(label), name: username }));
           button.addEventListener("click", () => {
             void manage(() => getJson(`${api}/access-requests/${encodeURIComponent(id)}`, {
               method: "PUT",
               headers: { "content-type": "application/json" },
               body: JSON.stringify({ role }),
-            }), role ? `Access granted to ${username}.` : `Request from ${username} declined.`);
+            }), role ? t("Access granted to {name}.", { name: username }) : t("Request from {name} declined.", { name: username }));
           });
           actions.append(button);
         }
@@ -102,17 +108,17 @@ export function initSpaceAccess(api) {
         const row = document.createElement("li");
         const name = document.createElement("span");
         const remove = document.createElement("button");
-        name.textContent = `${username} · ${role === "edit" ? "Can edit" : "Can read"}`;
+        name.textContent = `${username} · ${t(role === "edit" ? "Can edit" : "Can read")}`;
         remove.type = "button";
-        remove.textContent = "Remove";
-        remove.setAttribute("aria-label", `Remove access for ${username}`);
+        remove.textContent = t("Remove");
+        remove.setAttribute("aria-label", t("Remove access for {name}", { name: username }));
         remove.addEventListener("click", () => setGrant(username, null));
         row.append(name, remove);
         return row;
       }));
-      status.textContent = success || (grants.length ? "" : "No one else has access.");
+      status.textContent = success || (grants.length ? "" : t("No one else has access."));
     } catch (error) {
-      status.textContent = error.message || "Access could not be updated.";
+      status.textContent = error.message || t("Access could not be updated.");
     } finally {
       busy = false;
       submit.disabled = false;
@@ -124,7 +130,7 @@ export function initSpaceAccess(api) {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ username, role }),
-    }), role ? `Access saved for ${username}.` : `Access removed for ${username}.`);
+    }), role ? t("Access saved for {name}.", { name: username }) : t("Access removed for {name}.", { name: username }));
   }
 
   openAccess.addEventListener("click", () => {

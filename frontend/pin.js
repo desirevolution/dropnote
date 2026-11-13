@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 export function initPinUnlock(metadata, { headers, onUnlocked }) {
   if (!metadata.pinProtected) return;
   const form = document.querySelector("#pin-form");
@@ -18,13 +19,13 @@ export function initPinUnlock(metadata, { headers, onUnlocked }) {
         body: JSON.stringify({ pin: input.value }),
       });
       const body = await response.json();
-      if (!response.ok || typeof body.token !== "string") throw new Error(body.error ?? "Could not unlock editing.");
+      if (!response.ok || typeof body.token !== "string") throw new Error(body.error ? t(body.error) : t("Could not unlock editing."));
       if (dialog.open) {
         dialog.close();
         onUnlocked(body.token, body.expiresIn);
       }
     } catch (cause) {
-      error.textContent = cause.message || "Could not check the editing PIN.";
+      error.textContent = cause.message || t("Could not check the editing PIN.");
       error.hidden = false;
     } finally {
       input.value = "";

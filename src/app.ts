@@ -1,3 +1,4 @@
+import { detectLanguage, type Language } from "./locale.ts";
 import { fileURLToPath } from "node:url";
 import express, { type Express, type ErrorRequestHandler, type RequestHandler } from "express";
 import { DEFAULT_PAD_SLUG, type GrantRole, type PadRecord, type PadStore, type PinRecord } from "./store.ts";
@@ -46,7 +47,20 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
       next();
     });
   }
+  app.use((req, res, next) => {
+    res.locals.language = detectLanguage(req.get("Accept-Language"));
+    res.vary("Accept-Language");
+    next();
+  });
   app.use(express.json());
+  app.get("/api/words/:language", (req, res) => {
+    const language = req.params.language;
+    if (language !== "en" && language !== "de") {
+      res.sendStatus(404);
+      return;
+    }
+    res.type("text").sendFile(fileURLToPath(new URL(`./wordlists/${language}.txt`, import.meta.url)));
+  });
 
   // Always-on rate limiting (ticket 06): one shared per-client-IP budget
   // for the attempts that can be automated — Slug guessing (GETs under the
@@ -81,6 +95,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     }
     res.type("html").send(renderPadPage(pad, {
       ...pageOptions,
+      language: res.locals.language,
       username: requestUsername(res),
       canManage: padRole(pad, requestUsername(res)) === "owner",
       canEdit: canEdit(pad, requestUsername(res)),
@@ -124,7 +139,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
 
     let slug: string;
     if (body.slug === undefined) {
-      const generated = generateUniqueSlug(store);
+      const generated = generateUniqueSlug(store, res.locals.language);
       if (generated === null) {
         res.status(500).json({ error: "Could not find a free two-word Slug — try a custom one" });
         return;
@@ -162,6 +177,19 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     }
   });
 
+  app.get("/api/my-spaces", (_req, res) => {
+    const username = requestUsername(res);
+    res.set("Cache-Control", "private, no-store").json({ spaces: store.ownedPads(username).map((pad) => ({
+      slug: pad.slug,
+      path: `${config.padPath}/${pad.slug}`,
+      createdAt: pad.createdAt,
+      expiresAt: pad.expiresAt,
+      encrypted: pad.kind === "encrypted",
+      accessRequestCount: pad.accessRequests?.length ?? 0,
+      sharedWith: (pad.grants ?? []).map((grant) => grant.username),
+    })) });
+  });
+
   if (config.trustedProxies) {
     const requestLimits = new RateLimitCounter({ windowMs: 60_000, max: 10 });
     app.post("/api/pads/:slug/access-requests", (req, res) => {
@@ -181,18 +209,6 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     });
 
     const accessState = (pad: PadRecord) => ({ grants: pad.grants ?? [], requests: pad.accessRequests ?? [] });
-    app.get("/api/my-spaces", (_req, res) => {
-      const username = requestUsername(res)!;
-      res.json({ spaces: store.ownedPads(username).map((pad) => ({
-        slug: pad.slug,
-        path: `${config.padPath}/${pad.slug}`,
-        createdAt: pad.createdAt,
-        expiresAt: pad.expiresAt,
-        encrypted: pad.kind === "encrypted",
-        accessRequestCount: pad.accessRequests?.length ?? 0,
-      })) });
-    });
-
     const ownerAccess: RequestHandler = (req, res, next) => {
       const pad = getPadOrAnswer404(store, req.params.slug as string, res);
       if (!pad) return;
@@ -241,12 +257,14 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
       if (pad) jsonNoPad(res);
       return;
     }
-    res.set("Cache-Control", "no-store").json({
+    const role = padRole(pad, requestUsername(res));
+    res.set("Cache-Control", "private, no-store").json({
       slug: pad.slug,
       path: pad.slug === DEFAULT_PAD_SLUG ? "/default" : `${config.padPath}/${pad.slug}`,
       createdAt: pad.createdAt,
       expiresAt: pad.expiresAt,
       encrypted: pad.kind === "encrypted",
+      ...(pad.owner && (role === "read" || role === "edit") ? { sharedBy: pad.owner, canEdit: role === "edit" } : {}),
     });
   });
 
@@ -327,15 +345,16 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
         requested: req.query.access === "requested",
         spacePath: `${config.padPath}/${encodeURIComponent(slug)}${filesView}`,
       } : undefined;
-      page.status(404).type("html").send(renderNotFoundPage(access));
+      page.status(404).type("html").send(renderNotFoundPage(access, page.locals.language));
     });
     if (!pad) return;
     if (pad.kind === "encrypted" && !pad.encryption) {
-      res.status(404).type("html").send(renderNotFoundPage());
+      res.status(404).type("html").send(renderNotFoundPage(undefined, res.locals.language));
       return;
     }
     res.type("html").send(renderPadPage(pad, {
       ...pageOptions,
+      language: res.locals.language,
       username: requestUsername(res),
       canManage: padRole(pad, requestUsername(res)) === "owner",
       canEdit: canEdit(pad, requestUsername(res)),
@@ -344,7 +363,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
   app.get(`${config.padPath}/:slug`, padPage);
   app.get(config.padPath, (_req, res) => {
     // The bare prefix addresses no Pad — show the not-found page.
-    res.status(404).type("html").send(renderNotFoundPage());
+    res.status(404).type("html").send(renderNotFoundPage(undefined, res.locals.language));
   });
 
   // The bundled editor frontend (vanilla JS + Yjs).
@@ -396,9 +415,9 @@ function ttlFrom(ttl: unknown, defaultTtlSeconds: number | null, maxTtlSeconds: 
 }
 
 /** Generates a two-word Slug and retries if it collides with an existing Pad. */
-function generateUniqueSlug(store: PadStore): string | null {
+function generateUniqueSlug(store: PadStore, language: Language): string | null {
   for (let attempt = 0; attempt < GENERATED_SLUG_ATTEMPTS; attempt++) {
-    const slug = generateSlug();
+    const slug = generateSlug(language);
     if (!store.getPad(slug)) return slug;
   }
   return null;

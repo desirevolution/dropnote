@@ -104,16 +104,21 @@ test("a creation request that is not clearly encrypted is refused rather than gu
 
 const SECRET = "TOP SECRET: the vault opens at 12-34-56";
 
-test("the creation form offers the Encrypted choice and every page carries the one-time disclosure dialog", async () => {
+test("the creation form offers encryption and sharing requires explicit passphrase inclusion", async () => {
   const dataDir = await makeTempDataDir();
   const server = await startServer({ dataDir });
   try {
     const body = await (await fetch(`${server.baseUrl}/`)).text();
     assert.match(body, /<input[^>]*type="checkbox"[^>]*id="new-pad-encrypted"/, "the creator can choose encryption");
-    assert.match(body, /id="one-time-link"/, "the one-time Share Link disclosure exists");
-    assert.match(body, /id="one-time-copy"/, "the disclosure offers to copy the link");
-    assert.match(body, /id="one-time-password"/, "the passphrase can be copied separately");
-    assert.match(body, /passphrase cannot be recovered/i, "the dialog carries the unrecoverable-loss warning");
+    assert.match(body, /id="suggest-passphrase"/);
+    assert.match(body, /id="create-passphrase"[^>]*minlength="12"/);
+    assert.match(body, /id="share-secret-options" hidden/);
+    assert.match(body, /id="include-passphrase">/);
+    assert.match(body, /id="qr-copy-link"/);
+    assert.match(body, /id="qr-copy-image"/);
+    assert.match(body, /id="qr-save-image"/);
+    assert.match(body, /id="qr-copy-passphrase" hidden/);
+    assert.doesNotMatch(body, /id="one-time-link"/);
   } finally {
     await server.stop();
   }

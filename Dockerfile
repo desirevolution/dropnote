@@ -9,6 +9,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --silent
 COPY frontend/ frontend/
 COPY src/space-label.ts src/space-label.ts
+COPY src/locale.ts src/locale.ts
+COPY src/translations.ts src/translations.ts
 RUN npm run build
 
 # Runtime stage: production dependencies, the sources and the freshly built

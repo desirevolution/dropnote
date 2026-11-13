@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import type { Language } from "./locale.ts";
 /**
  * Slug vocabulary (see GLOSSARY.md): the Slug is a Pad's only public
  * identifier. Generation picks two words from the bundled word list — a
@@ -15,6 +17,10 @@ export const WORDS: readonly string[] =
     .filter((word) => word.length > 0)
     // Set-deduped so a stray repeated entry in the list cannot skew the odds.
     .filter((word, index, all) => all.indexOf(word) === index);
+
+const germanWords = [...new Set(readFileSync(new URL("./wordlists/de.txt", import.meta.url), "utf8")
+  .trim().split("\n").map((word) => word.replaceAll("ä", "ae").replaceAll("ö", "oe").replaceAll("ü", "ue").replaceAll("ß", "ss"))
+  .filter((word) => /^[a-z]+$/.test(word) && word.length <= 14))];
 
 export const RESERVED_SLUGS: ReadonlySet<string> = new Set(["api", "sync", "js", "default", "favicon.ico"]);
 
@@ -51,11 +57,12 @@ export function validateCustomSlug(slug: string): void {
 }
 
 /** Picks two different words from the bundled list, e.g. "amber-otter". */
-export function generateSlug(): string {
-  const first = WORDS[randomIndex(WORDS.length)];
-  let second = WORDS[randomIndex(WORDS.length)];
+export function generateSlug(language: Language = "en"): string {
+  const words = language === "de" ? germanWords : WORDS;
+  const first = words[randomIndex(words.length)];
+  let second = words[randomIndex(words.length)];
   while (second === first) {
-    second = WORDS[randomIndex(WORDS.length)];
+    second = words[randomIndex(words.length)];
   }
   return `${first}-${second}`;
 }
