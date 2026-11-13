@@ -71,14 +71,17 @@ Browser bookmarks, start-page choices and remembered keys from the previous buil
 | --- | --- |
 | Open Default | **My spaces** lists **Default** first and opens it directly at `/default`. |
 | Choose your start page | **Home** opens your browser's start page. Use **⋯ → Set as start page** to change it. **Reset start page** switches back to **Default**. A house marks the current start page. |
-| Create a space | **New space** offers an optional name and encryption. **More options** contains expiry and the editing PIN. After creation the new space opens immediately. |
+| Create a space | **New space** offers an optional display name and encryption. Under **More options**, you can set a custom URL address, expiry and editing PIN. Dropnote generates an address if you leave it empty and uses the name from that address when no display name is set. |
 | Find a space | **My spaces** lists all active spaces in single-user mode and the spaces you own in multiuser mode. In multiuser mode, use **⋯ → Bookmark space** on a space shared with you to add it to **Bookmarks** on this browser. |
 | Share a space | Use **Copy link** or **⋯ → QR code**. Copy the QR image where the browser supports it or download it as a PNG. In multiuser mode, grant access via **Manage access** or let the recipient request it. |
-| Edit or copy the note | Use the full-width **Note** tab and **Copy text**. Spaces containing only files open the **Files** tab. |
+| Edit or copy the note | The **Note** tab offers **Paste text**, **Copy text**, and undo and redo. **View options** holds **Word wrap** and **Line numbers**. Spaces containing only files open the **Files** tab. |
+| Rename a space | **⋯ → Rename space** changes the display name in the space, **My spaces** and bookmarks. Links and QR codes still use the original address. This action requires the same permissions and unlocks as other space management actions. |
 | Download the note | **⋯ → Download text (.txt)** saves a local UTF-8 text file named after the space address and the Unix timestamp in milliseconds, for example `project-notes-1794552905123.txt`. The downloaded file is plaintext, including when the note is encrypted in Dropnote. |
 | Share a screenshot or file | Use **Add files** in the Note tab, click or drop files on **Choose files** in the Files tab, or paste an image into the editor or anywhere in the Files tab. Transfers and retries are visible in both tabs. The file list shows the newest uploads first. Use **Copy files link** to open the Files tab directly. Open an image preview and choose **Copy image** to copy the full-resolution image as PNG. Clipboard access depends on browser support and permission. |
 | Clear the shared workspace | **⋯ → Clear note** and **⋯ → Remove all files** are separate confirmed actions. |
 | Manage an additional space | **⋯ → Change expiry** and **⋯ → Delete space** require write access. In multiuser mode these actions are available to the owner. The default expiry is seven days unless configured otherwise. |
+
+The **Paste text** button appends the clipboard text, starting on a new line when needed. If the browser blocks clipboard access, the editor is focused at the end so you can use your device’s Paste action.
 
 With the **Note** tab selected, paste plain text outside the editor to fill an empty note or confirm replacing an existing note. Press Escape to cancel. A replacement is one undo step. With the cursor inside the editor, paste inserts text at the cursor or replaces the current selection.
 
@@ -86,7 +89,7 @@ The note saves automatically and shows other active cursors. The editor shows **
 
 ### Encrypted spaces
 
-Use a passphrase of at least 12 characters or let Dropnote suggest six random words. The interface, suggested words and generated space names follow the browser's German or English preference, with English as the fallback.
+Use a passphrase of at least 12 characters or let Dropnote suggest a password of 17 random lowercase letters and digits or a passphrase of six random words. The suggested password omits easily confused characters and is shown in groups for typing. Enter it without the spacing. The interface, suggested words and generated space names follow the browser's German or English preference, with English as the fallback.
 
 The browser derives the encryption key locally. The new space opens unlocked after creation. During that visit, **⋯ → QR code** offers **Copy passphrase** and **Include passphrase**. The second option embeds the passphrase in the copied link and QR code. The browser consumes it from the URL fragment to unlock the space. Anyone who obtains the full link or QR code has the passphrase. Multiuser access rules still apply. The top-level **Copy link** action always copies the address alone.
 
@@ -264,6 +267,6 @@ The test harness starts the real server as a child process (fresh `DATA_DIR`, ep
 
 `test/deployment.test.ts` is the deployment smoke test: it builds the Docker image, boots a container with a temporary data volume, runs the API smoke facts against it (root serves the Default Pad page, JSON 404 shape), verifies the non-root UID and the data-dir ownership contract, asserts that a wrongly-owned directory fails boot with the permission error, and that data in the volume survives container replacement. It skips cleanly when Docker is unavailable; the first run builds the image (minutes), later runs reuse the layer cache.
 
-The editor wraps text by default. Use **Code view** for horizontal scrolling and toggle **Line numbers** independently. Both choices apply to the current page visit. The editor uses CodeMirror and Yjs, bundled with esbuild. The generated bundle is excluded from Git. Run `npm run build` to refresh it while the server is running. The Docker image builds and includes its own bundle.
+The editor wraps text by default. Turn off **Word wrap** for horizontal scrolling and toggle **Line numbers** independently. Both choices apply to the current page visit. The editor uses CodeMirror and Yjs, bundled with esbuild. The generated bundle is excluded from Git. Run `npm run build` to refresh it while the server is running. The Docker image builds and includes its own bundle.
 
 See the [glossary](GLOSSARY.md), the [encryption design](docs/adr/0001-client-side-e2e-zero-knowledge.md) and the [Live-Sync design](docs/adr/0002-yjs-live-sync-encrypted-relay.md).

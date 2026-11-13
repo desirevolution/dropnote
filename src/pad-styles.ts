@@ -152,7 +152,13 @@ export const PAD_CSS = `
   .start-marker { display: inline-flex; align-items: center; gap: .3rem; width: fit-content; padding: .15rem .4rem; color: var(--accent); background: var(--accent-soft); border-radius: .25rem; font-size: .8rem; font-weight: 600; }
   .start-marker svg { width: .85rem; height: .85rem; }
   .menu-items hr { border: 0; border-top: 1px solid var(--border); margin: .25rem 0; }
-  #note-tools button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+  #note-view summary { display: flex; gap: .4rem; padding: .45rem .65rem; }
+  #note-view .menu-items label { padding: .4rem .55rem; cursor: pointer; }
+  #note-view input { accent-color: var(--accent); }
+  #note-tools #undo-note, #note-tools #redo-note { padding-inline: .6rem; }
+  #note-paste-status { color: var(--muted); margin: .5rem .75rem 0; }
+  #note-paste-status:empty { display: none; }
+  #password-groups { display: block; color: var(--muted); margin-top: .5rem; font: .875rem ui-monospace, monospace; }
   #note .cm-gutters { background: var(--panel); color: var(--muted); border-color: var(--border); }
   #note .cm-lineNumbers .cm-gutterElement { padding-inline: .55rem; }
   #note .cm-gutters .cm-gutter { padding-block: 1rem; }
@@ -167,6 +173,7 @@ export const PAD_CSS = `
   .pin-form { display: flex; flex-wrap: wrap; gap: .5rem; }
   .advanced-options { border: 1px solid var(--border); border-radius: .45rem; padding: .55rem .65rem; }
   .advanced-options summary { cursor: pointer; font-size: .875rem; }
+  #new-pad-url-preview { overflow-wrap: anywhere; }
   .advanced-options label { margin-top: .6rem; }
   #new-pad-form small { font-weight: 400; color: var(--muted); }
   #ttl-form label { display: grid; gap: .3rem; }
@@ -193,6 +200,7 @@ export const PAD_CSS = `
     #note .cm-editor { height: clamp(13rem, 42vh, 27rem); }
   }
   @media (max-width: 34rem) {
+    #note-tools { column-gap: .25rem; }
     #attachments li { grid-template-columns: minmax(0, 1fr); }
   }
   @media (pointer: coarse) {

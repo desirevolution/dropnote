@@ -1,3 +1,4 @@
+import { spaceLabel } from "../src/space-label.ts";
 import * as Y from "yjs";
 import { initShareQr } from "./share-qr.js";
 import { consumeOpeningSecret } from "./share-secret.js";
@@ -51,6 +52,9 @@ let noteReplacement;
 let fileCount = 0;
 let clearing = false;
 let managing = false;
+let readingClipboard = false;
+let canUndo = false;
+let canRedo = false;
 let lockChannel;
 let uploadNoticeTimer;
 
@@ -61,7 +65,10 @@ const tabs = initWorkspaceTabs({
   },
   afterChange(view) {
     if (view === "note") note?.restoreScrollPosition();
-    else hideUploadNotice();
+    else {
+      hideUploadNotice();
+      $("note-view").open = false;
+    }
   },
 });
 
@@ -74,16 +81,49 @@ $("copy-link").addEventListener("click", () => copyText(padUrl, $("copy-status")
 $("copy-files-link").addEventListener("click", () => copyText(filesUrl.href, $("copy-status"), t("Files link copied.")));
 showUpload.addEventListener("click", () => tabs.showFiles());
 const qr = initShareQr(padUrl, metadata.slug);
-const codeView = $("code-view");
+const wordWrap = $("word-wrap");
 const lineNumbers = $("line-numbers");
-const pressed = (button) => button.getAttribute("aria-pressed") === "true";
-for (const [button, setter] of [[codeView, "setCodeView"], [lineNumbers, "setLineNumbers"]]) {
-  button.addEventListener("click", () => {
-    const next = !pressed(button);
-    button.setAttribute("aria-pressed", String(next));
-    note?.[setter](next);
-  });
-}
+const noteView = $("note-view");
+wordWrap.addEventListener("change", () => note?.setWordWrap(wordWrap.checked));
+lineNumbers.addEventListener("change", () => note?.setLineNumbers(lineNumbers.checked));
+document.addEventListener("click", (event) => {
+  if (!noteView.contains(event.target)) noteView.open = false;
+});
+noteView.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && noteView.open) {
+    noteView.open = false;
+    noteView.querySelector("summary").focus();
+  }
+});
+$("undo-note").addEventListener("click", () => note?.undo());
+$("redo-note").addEventListener("click", () => note?.redo());
+$("paste-note").addEventListener("click", async () => {
+  if (!canReplaceNote() || readingClipboard) return;
+  const editor = note;
+  const status = $("note-paste-status");
+  const mayPaste = () => note === editor && canReplaceNote() && !document.querySelector("dialog[open]");
+  readingClipboard = true;
+  status.textContent = "";
+  updateActions();
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!mayPaste()) return;
+    if (!text) {
+      status.textContent = t("The clipboard contains no text.");
+      return;
+    }
+    editor.appendText(text);
+    status.textContent = t("Text pasted.");
+  } catch {
+    if (mayPaste()) {
+      status.textContent = t("Use your device’s Paste action in the note.");
+      editor.focusEnd();
+    }
+  } finally {
+    readingClipboard = false;
+    updateActions();
+  }
+});
 noteCopy.addEventListener("click", () => copyText(noteText, $("note-copy-status"), t("Text copied.")));
 
 noteDownload.addEventListener("click", () => {
@@ -178,6 +218,10 @@ function showExpiry(expiresAt) {
 function updateActions() {
   noteCopy.disabled = noteDownload.disabled = !noteText;
   const states = {
+    "paste-note": !writable || readingClipboard,
+    "undo-note": !writable || !canUndo,
+    "redo-note": !writable || !canRedo,
+    "rename-space": !writable || managing,
     "clear-note": !writable || !noteText,
     "clear-files": !writable || !fileCount || clearing,
     "change-ttl": !writable || managing,
@@ -270,12 +314,17 @@ async function openPad(key = null) {
       noteText = value;
       updateActions();
     },
+    onHistory(undo, redo) {
+      canUndo = undo;
+      canRedo = redo;
+      updateActions();
+    },
     onCursor(position) {
       sync?.presence(position);
     },
   });
-  note.setCodeView(pressed(codeView));
-  note.setLineNumbers(pressed(lineNumbers));
+  note.setWordWrap(wordWrap.checked);
+  note.setLineNumbers(lineNumbers.checked);
   attachments = initAttachments(doc, metadata.slug, {
     key,
     writeHeaders,
@@ -318,11 +367,13 @@ function closeWorkspace() {
   tabs.setFileCount(0);
   hideUploadNotice();
   proof = writeToken = null;
-  for (const id of ["pin-dialog", "ttl-dialog"]) {
-    if ($(id).open) $(id).close();
+  for (const id of ["pin-dialog", "ttl-dialog", "rename-dialog"]) {
+    if ($(id)?.open) $(id).close();
   }
   workspace.hidden = true;
   $("note-copy-status").textContent = "";
+  $("note-paste-status").textContent = "";
+  canUndo = canRedo = false;
   changesPending = false;
 }
 
@@ -426,7 +477,7 @@ $("clear-files")?.addEventListener("click", async () => {
 });
 
 $("delete-pad")?.addEventListener("click", async () => {
-  if (!writable || managing || !window.confirm(t("Delete “{name}”, its note and all its files?", { name: metadata.slug }))) return;
+  if (!writable || managing || !window.confirm(t("Delete “{name}”, its note and all its files?", { name: spaceLabel(metadata.slug, metadata.displayName) }))) return;
   const current = generation;
   managing = true;
   updateActions();
@@ -440,6 +491,44 @@ $("delete-pad")?.addEventListener("click", async () => {
     if (generation === current) notice(error.message || t("Could not delete this space."));
   } finally {
     managing = false;
+    updateActions();
+  }
+});
+
+$("rename-space")?.addEventListener("click", () => {
+  $("display-name").value = metadata.displayName ?? "";
+  $("rename-error").hidden = true;
+});
+$("rename-form")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!writable || managing) return;
+  const current = generation;
+  const submit = event.currentTarget.querySelector('button[type="submit"]');
+  const errorLine = $("rename-error");
+  const displayName = $("display-name").value.trim();
+  errorLine.hidden = true;
+  submit.disabled = managing = true;
+  updateActions();
+  try {
+    const response = await fetch(api, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", ...writeHeaders() },
+      body: JSON.stringify({ displayName }),
+    });
+    if (!response.ok) throw new Error(await responseError(response));
+    const result = await response.json();
+    metadata.displayName = result.displayName;
+    const name = spaceLabel(metadata.slug, metadata.displayName);
+    $("space-heading").textContent = name;
+    document.title = `${name} – Dropnote`;
+    if (generation === current && $("rename-dialog").open) $("rename-dialog").close();
+  } catch (error) {
+    if (generation === current) {
+      errorLine.textContent = error.message || t("Could not rename this space.");
+      errorLine.hidden = false;
+    }
+  } finally {
+    submit.disabled = managing = false;
     updateActions();
   }
 });

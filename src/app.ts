@@ -1,3 +1,4 @@
+import { parseDisplayName } from "./space-label.ts";
 import { detectLanguage, type Language } from "./locale.ts";
 import { fileURLToPath } from "node:url";
 import express, { type Express, type ErrorRequestHandler, type RequestHandler } from "express";
@@ -103,7 +104,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
   });
 
   app.post("/api/pads", (req, res) => {
-    const body = (req.body ?? {}) as { slug?: unknown; ttl?: unknown; encrypted?: unknown; encryption?: unknown; pin?: unknown; instancePin?: unknown };
+    const body = (req.body ?? {}) as { slug?: unknown; displayName?: unknown; ttl?: unknown; encrypted?: unknown; encryption?: unknown; pin?: unknown; instancePin?: unknown };
 
     // The instance PIN (if one is set) gates only Pad creation — reading and
     // editing existing Pads never require it (ticket 06). It travels as
@@ -111,6 +112,12 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     const pinFailure = instancePinFailureOf(body.instancePin, config.instancePin);
     if (pinFailure !== null) {
       res.status(403).json({ error: pinFailure });
+      return;
+    }
+
+    const displayName = body.displayName === undefined ? null : parseDisplayName(body.displayName);
+    if (displayName === undefined) {
+      res.status(400).json({ error: "Enter a display name on one line with up to 80 characters." });
       return;
     }
 
@@ -159,10 +166,11 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     }
 
     try {
-      const pad = store.createPad(slug, { ttlSeconds, kind, pin, encryption, owner: requestUsername(res) ?? undefined });
+      const pad = store.createPad(slug, { displayName, ttlSeconds, kind, pin, encryption, owner: requestUsername(res) ?? undefined });
       res.status(201).json({
         slug: pad.slug,
         path: `${config.padPath}/${pad.slug}`,
+        displayName: pad.displayName ?? null,
         createdAt: pad.createdAt,
         expiresAt: pad.expiresAt,
         encrypted: pad.kind === "encrypted",
@@ -182,6 +190,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     res.set("Cache-Control", "private, no-store").json({ spaces: store.ownedPads(username).map((pad) => ({
       slug: pad.slug,
       path: `${config.padPath}/${pad.slug}`,
+      displayName: pad.displayName ?? null,
       createdAt: pad.createdAt,
       expiresAt: pad.expiresAt,
       encrypted: pad.kind === "encrypted",
@@ -261,6 +270,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     res.set("Cache-Control", "private, no-store").json({
       slug: pad.slug,
       path: pad.slug === DEFAULT_PAD_SLUG ? "/default" : `${config.padPath}/${pad.slug}`,
+      displayName: pad.displayName ?? null,
       createdAt: pad.createdAt,
       expiresAt: pad.expiresAt,
       encrypted: pad.kind === "encrypted",
@@ -321,6 +331,23 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
       return;
     }
     res.status(204).end();
+  });
+
+  app.patch("/api/pads/:slug", (req, res) => {
+    const pad = getPadOrAnswer404(store, req.params.slug as string, res);
+    if (!pad) return;
+    if (pad.slug === DEFAULT_PAD_SLUG) {
+      res.status(403).json({ error: "Default cannot be renamed." });
+      return;
+    }
+    if (!requireCapability(req, res, pad, pins)) return;
+    const name = parseDisplayName(req.body?.displayName);
+    if (name === undefined) {
+      res.status(400).json({ error: "Enter a display name on one line with up to 80 characters." });
+      return;
+    }
+    store.renamePad(pad, name);
+    res.json({ displayName: pad.displayName ?? null });
   });
 
   app.post("/api/pads/:slug/ttl", (req, res) => {

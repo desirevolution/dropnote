@@ -298,7 +298,8 @@ test("the Pad page offers Pad creation with the TTL choice and My spaces", async
 
     const form = /<form[^>]*id="new-pad-form"/.exec(body);
     assert.ok(form, "a creation form is on the page");
-    assert.match(body, /<input[^>]*id="new-pad-slug"/, "an optional custom Slug field is offered");
+    assert.match(body, /id="new-pad-name"[\s\S]*?id="new-pad-options"[\s\S]*?id="new-pad-slug"[\s\S]*?id="new-pad-url-preview"/,
+      "the display name appears before the advanced URL field and preview");
     const ttl = /<select[^>]*id="new-pad-ttl"[^>]*>([\s\S]*?)<\/select>/.exec(body)?.[1];
     assert.ok(ttl, "a TTL choice is offered");
     assert.match(ttl, /<option value="default" selected>Instance default \(7 days\)<\/option>/, "the 7-day instance default is preselected");
@@ -310,6 +311,31 @@ test("the Pad page offers Pad creation with the TTL choice and My spaces", async
     assert.doesNotMatch(body, /id="my-pads-list"|id="clear-my-pads"/);
   } finally {
     await server.stop();
+  }
+});
+
+test("creation accepts a display name independently of the URL address", async (t) => {
+  const server = await startServer({ dataDir: await makeTempDataDir(), env: { PAD_PATH: "/spaces" } });
+  t.after(() => server.stop());
+  const name = "Meeting-Notizen Köln & <Team>";
+  const named = await createPad(server.baseUrl, { displayName: `  ${name}  ` });
+  assert.equal(named.status, 201);
+  assert.equal(named.body.displayName, name);
+  assert.match(String(named.body.path), /^\/spaces\/[a-z]+-[a-z]+$/);
+
+  const custom = await createPad(server.baseUrl, { slug: "weekly-notes", displayName: name });
+  assert.equal(custom.status, 201);
+  assert.equal(custom.body.path, "/spaces/weekly-notes");
+  const page = await (await fetch(`${server.baseUrl}${custom.body.path}`)).text();
+  assert.match(page, /<h1 id="space-heading">Meeting-Notizen Köln &amp; &lt;Team&gt;<\/h1>/);
+  assert.match(page, /id="new-pad-url-preview"><code>\/spaces\//);
+
+  const addressOnly = await createPad(server.baseUrl, { slug: "address-only", displayName: " " });
+  assert.equal(addressOnly.status, 201);
+  assert.equal(addressOnly.body.displayName, null);
+  assert.match(await (await fetch(`${server.baseUrl}${addressOnly.body.path}`)).text(), /<h1 id="space-heading">Address only<\/h1>/);
+  for (const invalidName of [123, "First\nSecond", "a".repeat(81)]) {
+    assert.equal((await createPad(server.baseUrl, { displayName: invalidName })).status, 400);
   }
 });
 

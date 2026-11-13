@@ -45,6 +45,7 @@ export interface PadRecord {
   grants?: PadGrant[];
   accessRequests?: PadAccessRequest[];
   slug: string;
+  displayName?: string;
   kind: "plain" | "encrypted";
   encryption?: EncryptionParameters;
   createdAt: string;
@@ -255,7 +256,7 @@ export class PadStore {
    * reserved names); uniqueness is enforced here — a taken Slug throws
    * SlugTakenError.
    */
-  createPad(slug: string, options: { ttlSeconds: number | null; kind?: "plain" | "encrypted"; pin?: PinRecord; encryption?: EncryptionParameters; owner?: string }): PadRecord {
+  createPad(slug: string, options: { displayName?: string | null; ttlSeconds: number | null; kind?: "plain" | "encrypted"; pin?: PinRecord; encryption?: EncryptionParameters; owner?: string }): PadRecord {
     if (this.getPad(slug)) {
       throw new SlugTakenError(`The Slug "${slug}" is already taken by another Pad`);
     }
@@ -265,6 +266,7 @@ export class PadStore {
       createdAt: new Date().toISOString(),
       expiresAt: options.ttlSeconds === null ? null : new Date(Date.now() + options.ttlSeconds * 1_000).toISOString(),
     };
+    if (options.displayName) record.displayName = options.displayName;
     if (options.owner) record.owner = options.owner;
     if (options.encryption) record.encryption = options.encryption;
     if (options.pin) {
@@ -278,6 +280,19 @@ export class PadStore {
       throw error;
     }
     return structuredClone(record);
+  }
+
+  renamePad(pad: PadRecord, displayName: string | null): void {
+    const previous = pad.displayName;
+    if (displayName === null) delete pad.displayName;
+    else pad.displayName = displayName;
+    try {
+      this.#save();
+    } catch (error) {
+      if (previous === undefined) delete pad.displayName;
+      else pad.displayName = previous;
+      throw error;
+    }
   }
 
   /** Sets a new expiry for a still-live Pad (management: TTL extension). */

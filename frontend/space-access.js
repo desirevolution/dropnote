@@ -31,7 +31,7 @@ export function initSpaceAccess(api) {
         const link = document.createElement("a");
         const detail = document.createElement("span");
         link.href = space.path;
-        link.textContent = spaceLabel(space.slug);
+        link.textContent = spaceLabel(space.slug, space.displayName);
         detail.className = "my-pad-detail";
         detail.textContent = [
           space.sharedWith.length ? t("Shared with {name}", {

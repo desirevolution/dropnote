@@ -24,6 +24,10 @@ _Avoid_: upload, file, blob
 The permanent, unencrypted workspace at `/default`. Anyone with instance access can edit it.
 _Avoid_: home pad, main pad
 
+**Display name**
+
+The editable name shown for a space. It is visible metadata. The Slug identifies the space in its address.
+
 ### Access
 
 **Share**:

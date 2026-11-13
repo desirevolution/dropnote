@@ -110,7 +110,7 @@ function rememberPad(pad) {
   const path = localPadAddress(pad.path);
   if (!storage || !path) return false;
   const entry = {
-    slug: pad.slug, url: new URL(path, location.origin).href, encrypted: pad.encrypted,
+    slug: pad.slug, displayName: pad.displayName, url: new URL(path, location.origin).href, encrypted: pad.encrypted,
     createdAt: pad.createdAt, expiresAt: pad.expiresAt ?? null,
     sharedBy: pad.sharedBy, canEdit: pad.canEdit,
   };
@@ -172,7 +172,7 @@ export function initPadNavigation(metadata) {
         info.className = "my-pad-info";
         const link = document.createElement("a");
         link.href = localPadAddress(pad.url);
-        link.textContent = spaceLabel(pad.slug);
+        link.textContent = spaceLabel(pad.slug, pad.displayName);
         const detail = document.createElement("span");
         detail.className = "my-pad-detail";
         detail.textContent = [
@@ -184,7 +184,7 @@ export function initPadNavigation(metadata) {
         const remove = document.createElement("button");
         remove.type = "button";
         remove.textContent = t("Remove bookmark");
-        remove.setAttribute("aria-label", t("Remove bookmark for {name}", { name: spaceLabel(pad.slug) }));
+        remove.setAttribute("aria-label", t("Remove bookmark for {name}", { name: spaceLabel(pad.slug, pad.displayName) }));
         remove.addEventListener("click", () => {
           bookmarkRevision += 1;
           removeMyPad(storage, pad.url, pad.createdAt);
@@ -223,7 +223,7 @@ export function initPadNavigation(metadata) {
       slug: metadata.slug, createdAt: metadata.createdAt, url: new URL(metadata.path, location.origin).href,
     });
     if (saveLocal(startKey, value)) {
-      const name = spaceLabel(value ? metadata.slug : "default");
+      const name = value ? spaceLabel(metadata.slug, metadata.displayName) : spaceLabel("default");
       notice(t("{name} is now your start page in this browser.", { name }));
     } else {
       notice(t("This browser could not save the start page."));

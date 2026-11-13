@@ -33,7 +33,7 @@ class Cursor extends WidgetType {
   }
 }
 
-export function initNoteEditor(note, { onText, onCursor }) {
+export function initNoteEditor(note, { onText, onCursor, onHistory }) {
   const setMarkers = StateEffect.define();
   const editing = new Compartment();
   const wrapping = new Compartment();
@@ -55,6 +55,11 @@ export function initNoteEditor(note, { onText, onCursor }) {
   let timer;
   let visibleCursor = false;
   const undoManager = new Y.UndoManager(note);
+  function updateHistory() {
+    onHistory(undoManager.canUndo(), undoManager.canRedo());
+  }
+  const historyEvents = ["stack-item-added", "stack-item-popped", "stack-cleared"];
+  for (const event of historyEvents) undoManager.on(event, updateHistory);
   const editor = new EditorView({
     parent: document.querySelector("#note"),
     doc: note.toString(),
@@ -64,7 +69,13 @@ export function initNoteEditor(note, { onText, onCursor }) {
       gutters.of([]),
       EditorView.contentAttributes.of({ "aria-labelledby": "note-title", spellcheck: "false", tabindex: "0" }),
       placeholder(t("Write or paste text here…")),
-      keymap.of([...yUndoManagerKeymap, ...defaultKeymap]),
+      keymap.of([
+        ...yUndoManagerKeymap.map((binding) => ({
+          ...binding,
+          run: (view) => !writable || binding.run(view),
+        })),
+        ...defaultKeymap,
+      ]),
       yCollab(note, null, { undoManager }),
       markers,
       EditorView.updateListener.of((update) => {
@@ -131,8 +142,8 @@ export function initNoteEditor(note, { onText, onCursor }) {
       editor.scrollDOM.scrollTo(...scrollPosition);
       editor.requestMeasure();
     },
-    setCodeView(enabled) {
-      editor.dispatch({ effects: wrapping.reconfigure(enabled ? [] : EditorView.lineWrapping) });
+    setWordWrap(enabled) {
+      editor.dispatch({ effects: wrapping.reconfigure(enabled ? EditorView.lineWrapping : []) });
     },
     setLineNumbers(enabled) {
       editor.dispatch({ effects: gutters.reconfigure(enabled ? lineNumbers() : []) });
@@ -142,6 +153,25 @@ export function initNoteEditor(note, { onText, onCursor }) {
       writable = enabled;
       editor.dispatch({ effects: editing.reconfigure(editingMode(enabled)) });
       queueCursor();
+    },
+    undo() {
+      if (writable) undoManager.undo();
+    },
+    redo() {
+      if (writable) undoManager.redo();
+    },
+    appendText(text) {
+      if (!writable || !text) return;
+      const end = editor.state.doc.length;
+      const separator = end && editor.state.doc.sliceString(end - 1, end) !== "\n" && !/^[\r\n]/.test(text) ? "\n" : "";
+      undoManager.stopCapturing();
+      editor.dispatch({ changes: { from: end, insert: separator + text }, userEvent: "input.paste" });
+      undoManager.stopCapturing();
+    },
+    focusEnd() {
+      if (!writable) return;
+      editor.dispatch({ selection: { anchor: editor.state.doc.length }, scrollIntoView: true });
+      editor.focus();
     },
     replaceText(text) {
       if (!writable || editor.state.doc.toString() === text) return;
@@ -169,6 +199,7 @@ export function initNoteEditor(note, { onText, onCursor }) {
       document.removeEventListener("visibilitychange", queueCursor);
       window.removeEventListener("blur", queueCursor);
       editor.destroy();
+      for (const event of historyEvents) undoManager.off(event, updateHistory);
       undoManager.destroy();
     },
   };

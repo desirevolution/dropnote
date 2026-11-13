@@ -182,6 +182,17 @@ test("multiuser grants layer with encryption proof and account-bound editing PIN
   });
   assert.equal(pin.status, 200);
   const { token } = await pin.json();
+  assert.equal((await json(api, owner, "PATCH", { displayName: "Private" })).status, 403);
+  assert.equal((await request(api, owner, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", origin, "x-pad-proof": proof },
+    body: JSON.stringify({ displayName: "Private" }),
+  })).status, 403);
+  assert.equal((await request(api, owner, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", origin, "x-pad-proof": proof, authorization: `Bearer ${token}` },
+    body: JSON.stringify({ displayName: "Private" }),
+  })).status, 200);
   assert.equal((await control(socket(slug, owner, { token, proof }), "replay-done")).writable, true);
   assert.equal((await control(socket(slug, collaborator, { token, proof }), "replay-done")).writable, false);
 });
@@ -278,4 +289,33 @@ test("access request rate limits are per account and independent of whether a sp
     assert.ok(limited.headers.get("retry-after"));
   }
   assert.equal((await submit(existing, "charlie")).status, 303);
+});
+
+test("an owner can rename a space without changing its address or access grants", async (t) => {
+  const { request, json, dataDir } = await setup(t);
+  const create = await json("/api/pads", owner, "POST", { slug });
+  assert.equal(create.status, 201);
+  const original = await create.json();
+  assert.equal((await json(`${api}/access`, owner, "PUT", { username: collaborator, role: "edit" })).status, 200);
+  assert.equal((await json(api, collaborator, "PATCH", { displayName: "Other name" })).status, 403);
+  assert.equal((await json(api, "charlie", "PATCH", { displayName: "Other name" })).status, 404);
+  assert.equal((await json(api, owner, "PATCH", {})).status, 400);
+  assert.equal((await json(api, owner, "PATCH", { displayName: "two\nlines" })).status, 400);
+  assert.equal((await json(api, owner, "PATCH", { displayName: "a".repeat(81) })).status, 400);
+  assert.equal((await json("/api/pads/default", owner, "PATCH", { displayName: "Other name" })).status, 403);
+  const name = "Köln & <Team>";
+  const renamed = await json(api, owner, "PATCH", { displayName: `  ${name}  ` });
+  assert.deepEqual(await renamed.json(), { displayName: name });
+  const received = await (await request(api, collaborator)).json();
+  assert.equal(received.displayName, name);
+  assert.equal(received.path, original.path);
+  assert.equal(received.createdAt, original.createdAt);
+  assert.equal(received.canEdit, true);
+  const page = await (await request(original.path, collaborator)).text();
+  assert.match(page, /<h1 id="space-heading">Köln &amp; &lt;Team&gt;<\/h1>/);
+  const { spaces } = await (await request("/api/my-spaces", owner)).json();
+  assert.equal(spaces[0].displayName, name);
+  assert.equal(PadStore.open(dataDir, true).getLivePad(slug)?.displayName, name);
+  assert.deepEqual(await (await json(api, owner, "PATCH", { displayName: "" })).json(), { displayName: null });
+  assert.match(await (await request(original.path, collaborator)).text(), /<h1 id="space-heading">Private space<\/h1>/);
 });

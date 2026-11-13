@@ -8,7 +8,8 @@ import { DEFAULT_PAD_SLUG, type PadRecord } from "./store.ts";
 import { PAD_CSS } from "./pad-styles.ts";
 import type { Language } from "./locale.ts";
 import { translate } from "./translations.ts";
-import { spaceLabel } from "./space-label.ts";
+import { MAX_SLUG_LENGTH } from "./slug.ts";
+import { MAX_DISPLAY_NAME_LENGTH, spaceLabel } from "./space-label.ts";
 
 /**
  * Theme (Story 36): two palettes as CSS custom properties. By default the
@@ -98,7 +99,7 @@ export function renderPadPage(pad: PadRecord, options: PadPageOptions): string {
   const username = options.username && escapeHtml(options.username);
   const canManage = options.canManage ?? true;
   const fixed = pad.slug === DEFAULT_PAD_SLUG;
-  const heading = spaceLabel(pad.slug);
+  const heading = spaceLabel(pad.slug, pad.displayName);
   const tag = options.releaseTag;
   const releaseTag = tag && tag.length <= 129 && RELEASE_TAG_PATTERN.test(tag) ? tag : null;
   const defaultSpace = `<div class="shared-space-entry">
@@ -109,6 +110,7 @@ export function renderPadPage(pad: PadRecord, options: PadPageOptions): string {
   // replayed into the editor by the client; the page itself starts empty.
   const metadata = JSON.stringify({
     slug: pad.slug,
+    displayName: pad.displayName ?? null,
     createdAt: pad.createdAt,
     expiresAt: pad.expiresAt,
     encrypted: pad.kind === "encrypted",
@@ -152,7 +154,7 @@ ${PAD_CSS}
 <main>
   <header class="pad-head${fixed ? " compact" : ""}">
     <div>
-      <h1${fixed ? ' class="visually-hidden"' : ""}>${escapeHtml(heading)}</h1>
+      <h1${fixed ? ' class="visually-hidden"' : ' id="space-heading"'}>${escapeHtml(heading)}</h1>
       <div class="pad-meta">
         <span class="pad-mode${isEncrypted ? " encrypted" : ""}">${icon(isEncrypted ? "lock" : "unlock")} ${t(isEncrypted ? "End-to-end encrypted" : "Unencrypted")}</span>
         ${pad.pin ? `<span>${t("Editing protected by PIN")}</span>` : ""}
@@ -173,6 +175,7 @@ ${PAD_CSS}
           <button type="button" id="set-start-pad">${t("Set as start page")}</button>
           <button type="button" id="download-note" disabled>${t("Download text (.txt)")}</button>
           ${isEncrypted ? `<button type="button" id="lock-pad" hidden>${t("Lock space")}</button>` : ""}
+          ${!fixed && canManage ? `<button type="button" id="rename-space" data-open-dialog="rename-dialog" aria-haspopup="dialog" disabled>${t("Rename space")}</button>` : ""}
           ${!fixed && canManage ? `<button type="button" id="change-ttl" data-open-dialog="ttl-dialog" disabled>${t("Change expiry")}</button>` : ""}
           ${fixed || canManage ? '<hr>' : ""}
           ${fixed
@@ -187,7 +190,7 @@ ${PAD_CSS}
     <h2 id="key-title">${t("Unlock this space")}</h2>
     <form id="key-form" class="passphrase-form">
       <label>${t("Passphrase")}
-        <input name="passphrase" id="key-input" type="password" required autocomplete="off">
+        <input name="passphrase" id="key-input" type="password" autocapitalize="none" spellcheck="false" required autocomplete="off">
       </label>
       <label class="checkbox-field"><input type="checkbox" id="remember-unlock"> ${t("Keep unlocked in this browser")}</label>
       <button type="submit" class="primary">${t("Unlock")}</button>
@@ -219,10 +222,18 @@ ${PAD_CSS}
       </div>
       <div class="actions workspace-actions">
         <div class="actions" id="note-tools">
-          <button type="button" class="quiet" id="code-view" aria-pressed="false">${t("Code view")}</button>
-          <button type="button" class="quiet" id="line-numbers" aria-pressed="false">${t("Line numbers")}</button>
-          <span id="note-copy-status" role="status"></span>
+          <button type="button" class="quiet" id="paste-note" disabled>${icon("paste")} ${t("Paste text")}</button>
           <button type="button" class="quiet" id="copy-note" disabled>${icon("copy")} ${t("Copy text")}</button>
+          <button type="button" class="quiet" id="undo-note" aria-label="${t("Undo")}" title="${t("Undo")}" disabled>${icon("undo")}</button>
+          <button type="button" class="quiet" id="redo-note" aria-label="${t("Redo")}" title="${t("Redo")}" disabled>${icon("redo")}</button>
+          <details id="note-view" class="pad-menu">
+            <summary>${icon("view")} ${t("View options")}</summary>
+            <div class="menu-items">
+              <label class="checkbox-field"><input type="checkbox" id="word-wrap" checked> ${t("Word wrap")}</label>
+              <label class="checkbox-field"><input type="checkbox" id="line-numbers"> ${t("Line numbers")}</label>
+            </div>
+          </details>
+          <span id="note-copy-status" role="status"></span>
           <button type="button" id="choose-files" disabled>${icon("plus")} ${t("Add files")}</button>
         </div>
         <div id="files-tools">
@@ -238,6 +249,7 @@ ${PAD_CSS}
     <p id="attachment-error" class="attachment-error" role="alert" hidden></p>
     <ul id="attachment-uploads" aria-label="${t("Transfers")}"></ul>
     <section class="card note-card" id="note-panel" role="tabpanel" aria-labelledby="note-tab" hidden>
+      <p id="note-paste-status" role="status"></p>
       <h2 id="note-title" class="visually-hidden">${t("Note")}</h2>
       <div id="note"></div>
     </section>
@@ -273,8 +285,10 @@ ${PAD_CSS}
       <button type="button" class="icon-button quiet" data-close-dialog aria-label="${t("Close")}">${icon("close")}</button>
     </header>
     <form id="new-pad-form">
-      <label>${t("Space name (optional)")}
-        <input name="slug" id="new-pad-slug" placeholder="${t("Generated automatically")}" autocomplete="off" spellcheck="false" maxlength="63">
+      <label>${t("Display name (optional)")}
+        <input name="displayName" id="new-pad-name" maxlength="${MAX_DISPLAY_NAME_LENGTH}" autocomplete="off"
+          aria-describedby="new-pad-name-hint" autofocus>
+        <small id="new-pad-name-hint">${t("Leave empty to use the name from the address.")}</small>
       </label>
       <label class="new-pad-encrypted">
         <input type="checkbox" id="new-pad-encrypted">
@@ -282,16 +296,23 @@ ${PAD_CSS}
       </label>
       <div id="create-passphrase-field" hidden>
         <label>${t("Passphrase")}
-          <input id="create-passphrase" type="password" autocomplete="new-password" minlength="12" maxlength="1024">
+          <input id="create-passphrase" type="password" autocapitalize="none" spellcheck="false" autocomplete="new-password" minlength="12" maxlength="1024">
           <small>${t("Use at least 12 characters. There is no reset.")}</small>
         </label>
         <div class="actions passphrase-actions">
-          <button type="button" id="suggest-passphrase">${t("Suggest passphrase")}</button>
+          <button type="button" id="suggest-password">${t("Suggest password")}</button>
+          <button type="button" id="suggest-passphrase">${t("Suggest six words")}</button>
           <button type="button" id="show-passphrase">${t("Show passphrase")}</button>
         </div>
+        <p id="password-groups" title="${t("Password in groups. Type it without spaces.")}" hidden></p>
       </div>
-      <details class="advanced-options">
+      <details class="advanced-options" id="new-pad-options">
         <summary>${t("More options")} <span id="new-pad-expiry-summary"></span></summary>
+        <label>${t("URL address (optional)")}
+          <input name="slug" id="new-pad-slug" placeholder="${t("Generated automatically")}" autocomplete="off"
+            autocapitalize="none" spellcheck="false" maxlength="${MAX_SLUG_LENGTH}" aria-describedby="new-pad-url-preview">
+          <small id="new-pad-url-preview"><code>${escapeHtml(options.padPath)}/<span id="new-pad-url-segment">…</span></code></small>
+        </label>
         <label>${t("Expires after")}
           <select name="ttl" id="new-pad-ttl">${ttlOptions(options.defaultTtlSeconds, options.maxTtlSeconds, language)}</select>
         </label>
@@ -349,6 +370,22 @@ ${PAD_CSS}
     </form>
     <p id="space-access-status" role="status"></p>
     <ul class="account-list" id="space-access-list"></ul>
+  </dialog>` : ""}
+
+  ${!fixed && canManage ? `<dialog id="rename-dialog" aria-labelledby="rename-title">
+    <header class="dialog-head">
+      <h2 id="rename-title">${t("Rename space")}</h2>
+      <button type="button" class="icon-button quiet" data-close-dialog aria-label="${t("Close")}">${icon("close")}</button>
+    </header>
+    <form id="rename-form" class="passphrase-form">
+      <label>${t("Display name")}
+        <input id="display-name" autocomplete="off" maxlength="${MAX_DISPLAY_NAME_LENGTH}" value="${escapeHtml(pad.displayName ?? "")}"
+          placeholder="${escapeHtml(spaceLabel(pad.slug))}" aria-describedby="rename-hint" autofocus>
+      </label>
+      <p id="rename-hint">${t("Leave empty to use the name from the address.")}</p>
+      <p id="rename-error" class="form-error" role="alert" hidden></p>
+      <div class="dialog-actions"><button type="submit" class="primary">${t("Save name")}</button></div>
+    </form>
   </dialog>` : ""}
 
   <dialog id="ttl-dialog" aria-labelledby="ttl-title">
@@ -476,6 +513,10 @@ ${access
 }
 
 const ICON_PATHS = {
+  undo: '<path d="M9 15 4 10l5-5M4 10h10a5 5 0 0 1 0 10h-3"/>',
+  redo: '<path d="m15 15 5-5-5-5m5 5H10a5 5 0 0 0 0 10h3"/>',
+  paste: '<path d="M9 4H6a2 2 0 0 0-2 2v14h16V6a2 2 0 0 0-2-2h-3"/><rect x="9" y="2" width="6" height="5" rx="1"/><path d="M8 12h8m-8 4h8"/>',
+  view: '<path d="M4 7h16M4 17h16M8 4v6m8 4v6"/>',
   pad: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6m-6 4h6m-6 4h3"/>',
   note: '<path d="M4 6h16M4 12h16M4 18h10"/>',
   files: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>',

@@ -20,8 +20,11 @@ test("the Default Pad shows the plain-text editor alongside its files", async ()
     assert.match(body, /<a href="\/" id="home-link"/);
     assert.match(body, /id="owned-spaces-dialog"[\s\S]*?<a href="\/default">Default<\/a>[\s\S]*?id="owned-spaces-list"/);
     assert.doesNotMatch(body, /id="my-pads-dialog"|id="remember-pad"/);
-    assert.match(body, /id="code-view" aria-pressed="false"/);
-    assert.match(body, /id="line-numbers" aria-pressed="false"/);
+    assert.match(body, /id="word-wrap" checked>/);
+    assert.match(body, /id="line-numbers">/);
+    assert.match(body, /id="paste-note" disabled>/);
+    assert.match(body, /id="undo-note"[^>]*disabled>/);
+    assert.match(body, /id="redo-note"[^>]*disabled>/);
     assert.doesNotMatch(body, /<a[^>]*class="release-version"/);
 
     assert.match(body, /<button[^>]*id="download-note" disabled>Download text \(.txt\)<\/button>/);

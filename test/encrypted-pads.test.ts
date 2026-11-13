@@ -110,6 +110,7 @@ test("the creation form offers encryption and sharing requires explicit passphra
   try {
     const body = await (await fetch(`${server.baseUrl}/`)).text();
     assert.match(body, /<input[^>]*type="checkbox"[^>]*id="new-pad-encrypted"/, "the creator can choose encryption");
+    assert.match(body, /id="suggest-password"/);
     assert.match(body, /id="suggest-passphrase"/);
     assert.match(body, /id="create-passphrase"[^>]*minlength="12"/);
     assert.match(body, /id="share-secret-options" hidden/);

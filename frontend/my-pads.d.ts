@@ -1,6 +1,7 @@
 /** One remembered Pad: its Share Link — deliberately never a Key. */
 export interface MyPadEntry {
   slug: string;
+  displayName?: string | null;
   url: string;
   encrypted: boolean;
   createdAt: string;
