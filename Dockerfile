@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Build stage: install the full toolchain and bundle the editor frontend
-# (vanilla JS + Yjs) into public/js/editor.bundle.js. The server
+# and guest page into public/js/. The server
 # itself needs no build step — Node 24 runs the TypeScript sources directly.
 FROM node:24-alpine AS build
 WORKDIR /app
@@ -24,7 +24,7 @@ ENV NODE_ENV=production \
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --silent && npm cache clean --force
-COPY --from=build /app/public/js/editor.bundle.js public/js/editor.bundle.js
+COPY --from=build /app/public/js/ public/js/
 COPY public/fonts/ public/fonts/
 COPY src/ src/
 # Pre-create the data directory with the runtime user's ownership so an

@@ -30,6 +30,14 @@ export async function padProof(key) {
   return encodeBase64url(await derivePurposeKey(key, "dropnote v1 write proof"));
 }
 
+export async function guestProof(key) {
+  return encodeBase64url(await derivePurposeKey(key, "dropnote v1 guest read proof"));
+}
+
+export async function guestProofHash(key) {
+  return encodeBase64url(new Uint8Array(await crypto.subtle.digest("SHA-256", text.encode(await guestProof(key)))));
+}
+
 export function presenceKey(key) {
   return derivePurposeKey(key, "dropnote v1 cursor presence");
 }

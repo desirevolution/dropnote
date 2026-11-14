@@ -133,7 +133,7 @@ export const PAD_CSS = `
   #new-pad-form .new-pad-encrypted { display: flex; align-items: flex-start; gap: .6rem; padding: .65rem; background: var(--panel); border-radius: .45rem; }
   .new-pad-encrypted input { accent-color: var(--accent); margin: .3rem 0 0; }
   .new-pad-encrypted small { display: block; font-weight: 400; color: var(--muted); }
-  #new-pad-dialog, #pad-qr-dialog, #space-access-dialog { width: min(34rem, calc(100vw - 2rem)); }
+  #guest-link-dialog, #new-pad-dialog, #pad-qr-dialog, #space-access-dialog { width: min(34rem, calc(100vw - 2rem)); }
   #space-access-requests { margin-block-end: 1rem; }
   #space-access-requests h3 { margin: 0 0 .5rem; font-size: 1rem; }
   #space-access-request-list li { display: grid; gap: .45rem; padding: .6rem 0; }
@@ -192,7 +192,10 @@ export const PAD_CSS = `
   .advanced-options label { margin-top: .6rem; }
   #new-pad-form small { font-weight: 400; color: var(--muted); }
   #ttl-form label { display: grid; gap: .3rem; }
-  #pad-qr { display: block; width: min(280px, 100%); height: auto; margin: 0 auto .8rem; border-radius: .3rem; }
+  #guest-link-dialog input:not([type="checkbox"]) { display: block; width: 100%; box-sizing: border-box; }
+  #guest-link-active { display: grid; gap: .6rem; margin-block-end: .85rem; }
+  #guest-link-form { margin-block-start: .85rem; }
+  #pad-qr, #guest-link-qr { display: block; width: min(280px, 100%); height: auto; margin: 0 auto .8rem; border-radius: .3rem; }
   #pad-qr-link { display: block; margin-bottom: .4rem; overflow-wrap: anywhere; font-size: .875rem; }
   #image-dialog { width: min(58rem, calc(100vw - 2rem)); }
   #image-title { overflow-wrap: anywhere; }

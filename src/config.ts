@@ -15,6 +15,7 @@ export interface Config {
   port: number;
   /** Externally reachable base URL, used when building Share Links. */
   baseUrl: string;
+  guestOrigin?: string;
   /** Directory holding all persistent state (JSON index, per-Pad data). */
   dataDir: string;
   /** Instance PIN gating Pad creation; null means creation is open (default). */
@@ -58,6 +59,17 @@ const DEFAULTS = {
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
   const port = intFrom(env, "PORT", DEFAULTS.PORT, { min: 0, max: 65_535 });
   const baseUrl = urlFrom(env, "BASE_URL", `http://localhost:${port}`);
+  const guestLinks = env.GUEST_LINKS ?? "false";
+  if (guestLinks !== "true" && guestLinks !== "false") throw new ConfigError("GUEST_LINKS must be true or false");
+  let guestOrigin: string | undefined;
+  if (guestLinks === "true") {
+    const guestUrl = new URL(urlFrom(env, "GUEST_BASE_URL", "https://localhost"));
+    if (!env.GUEST_BASE_URL || guestUrl.protocol !== "https:" || guestUrl.href !== guestUrl.origin + "/" ||
+        guestUrl.hostname.replace(/\.$/, "") === new URL(baseUrl).hostname.replace(/\.$/, "")) {
+      throw new ConfigError("GUEST_BASE_URL must be an HTTPS origin with a hostname different from BASE_URL");
+    }
+    guestOrigin = guestUrl.origin;
+  }
   const dataDir = stringFrom(env, "DATA_DIR", DEFAULTS.DATA_DIR);
   const multiuser = env.MULTIUSER ?? "false";
   if (multiuser !== "true" && multiuser !== "false") throw new ConfigError("MULTIUSER must be true or false");
@@ -86,6 +98,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
   const maxFileSizeBytes = bytesFrom(env, "MAX_FILE_SIZE", DEFAULTS.MAX_FILE_SIZE);
   const maxInstanceSizeBytes = bytesFrom(env, "MAX_INSTANCE_SIZE", DEFAULTS.MAX_INSTANCE_SIZE);
   const padPath = padPathFrom(env);
+  if (guestOrigin && (padPath === "/g" || padPath.startsWith("/g/"))) throw new ConfigError("PAD_PATH cannot be under /g when GUEST_LINKS is enabled");
   const pinLockoutSeconds = durationFrom(env, "PIN_LOCKOUT_SECONDS", DEFAULTS.PIN_LOCKOUT);
   if (pinLockoutSeconds <= 0) {
     throw new ConfigError(`PIN_LOCKOUT_SECONDS must be a positive duration, got "${env.PIN_LOCKOUT_SECONDS}"`);
@@ -104,6 +117,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     trustedProxies,
     port,
     baseUrl,
+    ...(guestOrigin ? { guestOrigin } : {}),
     dataDir,
     instancePin,
     defaultTtlSeconds,

@@ -15,6 +15,7 @@ import { messageOf } from "./errors.ts";
 import { canEdit, hasPadProof, padRole, parseEncryption, writeFailure } from "./pad-access.ts";
 import { proxyUsername, USERNAME_PATTERN, validRequestOrigin } from "./proxy-user.ts";
 import type { PadRevision } from "./update-log.ts";
+import { guestManagement, guestRouter, guestStatus, isGuestHost } from "./guest.ts";
 import type { Config } from "./config.ts";
 
 /** How often Pad creation retries a generated two-word Slug on collision. */
@@ -28,6 +29,7 @@ export interface AppOptions {
   onGrantChanged?: (slug: string, username: string, role: GrantRole | null) => void;
   notifyAccount?: (username: string) => void;
   onAttachmentChanged?: (slug: string) => void;
+  guestUpdates?: (pad: PadRecord) => Buffer[];
   padRevision?: (pad: PadRecord) => PadRevision;
   onExpiryChanged?: (slug: string, expiresAt: string | null) => void;
 }
@@ -36,6 +38,14 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
   const pins = options.pins;
   const app = express();
   app.disable("x-powered-by");
+  if (config.guestOrigin) {
+    const guests = guestRouter(store, config, config.guestOrigin, options.guestUpdates);
+    app.use((req, res, next) => {
+      if (isGuestHost(req.headers.host, config.guestOrigin)) guests(req, res, next);
+      else if (req.path === "/g" || req.path.startsWith("/g/")) res.sendStatus(404);
+      else next();
+    });
+  }
   if (config.trustedProxies) {
     app.use((req, res, next) => {
       res.set("Cache-Control", "private, no-store");
@@ -57,6 +67,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     res.vary("Accept-Language");
     next();
   });
+  if (config.guestOrigin) app.use("/api/pads", guestManagement(store, config));
   app.use(express.json());
   app.get("/api/words/:language", (req, res) => {
     const language = req.params.language;
@@ -86,6 +97,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     maxTtlSeconds: config.maxTtlSeconds,
     instancePinRequired: config.instancePin !== null,
     padPath: config.padPath,
+    guestEnabled: Boolean(config.guestOrigin),
   };
 
   // Attachment bytes for any Pad (ticket 03); Pad creation lives at the
@@ -206,6 +218,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     const spaces = store.ownedPads(username).map((pad) => ({
       ...summary(pad),
       accessRequestCount: pad.accessRequests?.length ?? 0,
+      ...(config.guestOrigin ? { guestStatus: guestStatus(pad) } : {}),
       sharedWith: (pad.grants ?? []).map((grant) => grant.username),
     }));
     res.set("Cache-Control", "private, no-store").json({

@@ -204,7 +204,7 @@ export function initPadActions() {
   });
 }
 
-function randomItems(items, count) {
+export function randomItems(items, count) {
   const limit = 2 ** 32 - (2 ** 32 % items.length);
   const random = new Uint32Array(1);
   return Array.from({ length: count }, () => {

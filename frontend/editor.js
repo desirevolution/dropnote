@@ -1,5 +1,6 @@
 import { spaceLabel } from "../src/space-label.ts";
 import * as Y from "yjs";
+import { initGuestLinks } from "./guest-links.js";
 import { initShareQr } from "./share-qr.js";
 import { consumeOpeningSecret } from "./share-secret.js";
 import { t } from "./i18n.js";
@@ -44,6 +45,7 @@ let attachments;
 let writeToken = null;
 let pinTimer;
 let proof;
+let guestKey;
 let generation = 0;
 let writable = false;
 let readMode = false;
@@ -77,6 +79,8 @@ const tabs = initWorkspaceTabs({
 
 setStorageUser(metadata.username);
 initPadActions();
+const guestLinks = initGuestLinks(api, encryption, () => proof, () => guestKey,
+  () => connectionState === "writable" || connectionState === "readonly" ? doc : null);
 initSpaceAccess(api, deleteSpace, metadata.unreadGrantId);
 const navigation = initPadNavigation(metadata);
 
@@ -311,6 +315,7 @@ function setState(state) {
     tabs.showInitial(noteText, fileCount);
   }
   connectionState = state;
+  guestLinks?.refreshControls();
   applyEditingState();
 }
 
@@ -375,6 +380,8 @@ async function openPad(key = null) {
   const [access, cursorKey] = key ? await Promise.all([padProof(key), presenceKey(key)]) : [null, null];
   if (current !== generation) return;
   proof = access;
+  guestKey = key;
+  guestLinks?.refreshControls();
   if (encrypted) {
     $("key-prompt").hidden = true;
     $("lock-pad").hidden = false;
@@ -438,7 +445,8 @@ function closeWorkspace() {
   fileCount = 0;
   tabs.setFileCount(0);
   hideUploadNotice();
-  proof = writeToken = null;
+  proof = writeToken = guestKey = null;
+  guestLinks?.refreshControls();
   for (const id of ["pin-dialog", "ttl-dialog", "rename-dialog"]) {
     if ($(id)?.open) $(id).close();
   }

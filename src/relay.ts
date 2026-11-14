@@ -9,6 +9,7 @@ import { canEdit, hasPadProof, padRole } from "./pad-access.ts";
 import type { PinAuthority } from "./pin.ts";
 
 import { proxyUsername, validRequestOrigin } from "./proxy-user.ts";
+import { isGuestHost } from "./guest.ts";
 import type { Config } from "./config.ts";
 
 const SYNC_PATH = /^\/sync\/([a-z0-9-]+)(?:\?.*)?$/;
@@ -23,10 +24,10 @@ export class SyncRelay {
   readonly #deliveredRevisions = new WeakMap<WebSocket, number>();
   readonly #accountRooms = new Map<string, Set<WebSocket>>();
   readonly #users = new WeakMap<WebSocket, string>();
-  readonly #config: Pick<Config, "trustedProxies" | "baseUrl">;
+  readonly #config: Pick<Config, "trustedProxies" | "baseUrl" | "guestOrigin">;
   readonly #heartbeat: NodeJS.Timeout;
 
-  constructor(store: PadStore, pins: PinAuthority, config: Pick<Config, "trustedProxies" | "baseUrl"> = { trustedProxies: null, baseUrl: "" }) {
+  constructor(store: PadStore, pins: PinAuthority, config: Pick<Config, "trustedProxies" | "baseUrl" | "guestOrigin"> = { trustedProxies: null, baseUrl: "" }) {
     this.#store = store;
     this.#pins = pins;
     this.#config = config;
@@ -51,6 +52,10 @@ export class SyncRelay {
   /** Takes over WebSocket upgrades for /sync/<Slug> on the HTTP server. */
   attach(server: HttpServer): void {
     server.on("upgrade", (request, socket, head) => {
+      if (isGuestHost(request.headers.host, this.#config.guestOrigin)) {
+        rejectUpgrade(socket, 404, "Unknown sync endpoint");
+        return;
+      }
       const username = proxyUsername(request, this.#config.trustedProxies);
       if (username === undefined || (username !== null && !validRequestOrigin(request, this.#config.baseUrl))) {
         rejectUpgrade(socket, 403, "Authentication through a trusted proxy and a valid origin are required");
@@ -101,6 +106,10 @@ export class SyncRelay {
     for (const client of this.#accountRooms.get(username) ?? []) {
       sendControl(client, { type: "access-changed" });
     }
+  }
+
+  guestUpdates(pad: PadRecord): Buffer[] {
+    return this.#logFor(pad.slug).updates();
   }
 
   revision(pad: PadRecord) {

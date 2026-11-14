@@ -12,7 +12,7 @@
     "start": "node src/main.ts",
     "pretest": "npm run build",
     "test": "node --test \"test/**/*.test.ts\"",
-    "build": "esbuild frontend/editor.js --bundle --minify --format=esm --outfile=public/js/editor.bundle.js",
+    "build": "esbuild editor.bundle=frontend/editor.js guest.bundle=frontend/guest.js --bundle --minify --format=esm --outdir=public/js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

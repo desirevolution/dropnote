@@ -41,7 +41,18 @@ export interface PadAccessRequest {
   username: string;
 }
 
+export interface GuestLink {
+  token: string;
+  expiresAt: string;
+  proofHash: string;
+  passwordSalt?: string;
+  snapshot?: { ciphertext: string; capturedAt: string; displayName: string; files: Record<string, string> };
+  oneTime: boolean;
+  redemption?: { at: string; sessionHash: string };
+}
+
 export interface PadRecord {
+  guestLink?: GuestLink;
   seenRevisions?: Record<string, number>;
   owner?: string;
   grants?: PadGrant[];
@@ -149,6 +160,21 @@ export class PadStore {
     const pad = this.getPad(slug);
     if (this.#deleting.has(slug) || !pad || (pad.expiresAt !== null && Date.parse(pad.expiresAt) <= Date.now())) return undefined;
     return pad;
+  }
+
+  padForGuestToken(token: string): PadRecord | undefined {
+    return Object.values(this.#index.pads).find((pad) => pad.guestLink?.token === token && this.getLivePad(pad.slug));
+  }
+
+  setGuestLink(pad: PadRecord, guestLink?: GuestLink): void {
+    const previous = pad.guestLink;
+    pad.guestLink = guestLink;
+    try {
+      this.#save();
+    } catch (error) {
+      pad.guestLink = previous;
+      throw error;
+    }
   }
 
   ownedPads(username: string | null): PadRecord[] {

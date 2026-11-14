@@ -42,6 +42,10 @@ _Avoid_: code, id, pad name
 The direct address of a Pad. An Encrypted Pad also requires its Passphrase.
 _Avoid_: share URL, permalink, deep link
 
+**Guest Link**
+
+A time-limited address on the guest host that lets a visitor read the Note and download Attachments without signing in. Normal Pads require a separate guest password and use HTTPS. Encrypted Pads share a fixed snapshot that guests decrypt in their browser using the existing passphrase. A one-time Guest Link can be redeemed once and allows downloads in that tab until the link expires or is revoked.
+
 **Key**:
 The encryption secret derived in the browser from the Pad's Passphrase. The browser can optionally remember it.
 _Avoid_: password, secret

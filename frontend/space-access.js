@@ -232,6 +232,7 @@ export function initSpaceAccess(api, deleteSpace, unreadGrantId) {
         name: space.sharedWith[0] + (space.sharedWith.length > 1 ? ` +${space.sharedWith.length - 1}` : ""),
       }) : "",
       space.encrypted ? t("Encrypted") : "",
+      space.guestStatus ? t(space.guestStatus.redeemedAt ? "Guest link redeemed" : "Guest link active") : "",
       space.expiresAt ? t("Expires {date}", { date: dateLabel(space.expiresAt) }) : "",
     ];
   }
@@ -280,6 +281,21 @@ export function initSpaceAccess(api, deleteSpace, unreadGrantId) {
             });
           }
           row.append(requests);
+        }
+        if (Object.hasOwn(space, "guestStatus")) {
+          const guest = document.createElement("a");
+          guest.href = `${space.path}?guest=1`;
+          guest.textContent = t("Manage guest link");
+          const currentGuest = document.querySelector('[data-open-dialog="guest-link-dialog"]');
+          if (currentGuest && location.pathname === space.path) {
+            guest.addEventListener("click", (event) => {
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              event.preventDefault();
+              owned.closest("dialog").close();
+              currentGuest.click();
+            });
+          }
+          row.append(guest);
         }
         const remove = document.createElement("button");
         remove.type = "button";

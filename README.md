@@ -50,14 +50,14 @@ Dependabot checks npm dependencies, the Docker base image and workflow actions w
 
 ## Running from source
 
-Requires Node.js 24 or newer. Install development dependencies to build the browser bundle from source.
+Requires Node.js 24 or newer. Install development dependencies to build the browser bundles from source.
 
 ```sh
 npm ci
 npm start
 ```
 
-Open <http://localhost:3000>. `npm start` builds the browser bundle before starting the server. To load a local `.env` file explicitly, run `npm run build && node --env-file=.env src/main.ts`.
+Open <http://localhost:3000>. `npm start` builds the browser bundles before starting the server. To load a local `.env` file explicitly, run `npm run build && node --env-file=.env src/main.ts`.
 
 ### Upgrading from a build with the previous project name
 
@@ -128,6 +128,8 @@ The server reads these settings from its process environment.
 | `DATA_DIR`           | `./data`                | Directory holding all persistent state (JSON index, per-Pad data).      |
 | `MULTIUSER`          | `false`                | Require proxy authentication and enable private spaces and account grants. |
 | `TRUSTED_PROXIES`    | *(unset)*              | Comma-separated direct proxy IPs or CIDRs. Required when `MULTIUSER=true`. |
+| `GUEST_LINKS`        | `false`                | Enable public read-only guest links for spaces other than Default. |
+| `GUEST_BASE_URL`     | *(unset)*              | Dedicated HTTPS origin for guest links. Required when enabled and must have a different hostname than `BASE_URL`. |
 | `INSTANCE_PIN`       | *(unset = off)*         | Instance PIN gating Pad creation; reading and editing never require it. |
 | `DEFAULT_TTL`        | `7d`                    | Default TTL offered at Pad creation (`s`/`m`/`h`/`d`, or `never`).      |
 | `MAX_TTL`            | `never` (unbounded)     | Longest TTL a Pad may be given (`s`/`m`/`h`/`d`, or `never`); must not be shorter than `DEFAULT_TTL`. |
@@ -240,6 +242,39 @@ Each account has its own Default note and files. The address `/default` opens th
 
 New spaces start private. A signed-in recipient without permission can choose **Request access** when opening a link. The response is the same for missing and private spaces. Dropnote keeps one open request per user and space. The question-mark badge on **My spaces** counts requests for your spaces. The number badge counts new shares. Both refresh every ten seconds while the page is visible and when the tab regains focus. The owner sees counts per space in **My spaces** and can allow reading, allow editing or decline in **Manage access**. After sending a request, keep the confirmation page open to enter the space automatically once access is granted. An authenticated account WebSocket at `/events` refreshes badges, open access dialogs and approval checks immediately. When disconnected, visible pages check every ten seconds. Incoming requests and shares show a short clickable notice in the active tab. The same link also works after approval. Approved requests and direct grants appear automatically under **Shared with me** on all devices. A share stays marked **New** until you open its page. Opening the list leaves the marker in place. Removing access removes the entry. Owners can grant access from **Add person**, which lists accounts that already visited Dropnote and have neither access nor a pending request. Existing permissions can be edited or revoked in the grant list. Removing a grant disconnects that user's open editor and prevents new requests. A downloaded file or previously copied text stays with its recipient. Encrypted spaces still require their passphrase. If the space has an editing PIN, editors and owners still need it to write. Bookmarks, the browser's start page and remembered encryption keys are scoped to the active login.
 
+### Public guest links with Caddy
+
+Keep the internal site behind your existing SSO and add a dedicated HTTPS host for guests. In single-user mode, also keep the internal site behind authentication or a private network. Enable the feature in `.env` and restart Dropnote.
+
+```dotenv
+BASE_URL=https://dropnote.example.com
+GUEST_LINKS=true
+GUEST_BASE_URL=https://guest.example.com
+```
+
+Expose only the guest routes and keep Dropnote reachable only from Caddy. Remove the published `ports` mapping in Compose when both services are on a private Docker network. Preserve the separate host names up to Dropnote. Keep guest access logs disabled or redact the whole request URI and guest authorization headers.
+
+```caddyfile
+guest.example.com {
+    handle /g/* {
+        reverse_proxy dropnote:3000 {
+            header_up Host guest.example.com
+            header_up -X-Forwarded-User
+        }
+    }
+
+    handle {
+        respond 404
+    }
+}
+```
+
+Only the owner can manage a guest link in multiuser mode. Open **Guest link** in the space menu or **Manage guest link** in **My spaces**. For an encrypted space, unlock it to create or replace a link. The Default space stays private. Revoke or copy an unused link even while the space is locked. Each space has one active guest link. Choose 1 hour, 24 hours or 7 days (default 24 hours when available). Dropnote offers only durations that fit the remaining space lifetime. Spaces with less than one hour remaining cannot issue a new link. Existing links remain valid until the earlier of the link and space expiry. Replacement and revocation block new opens and downloads immediately.
+
+Guests can copy the note and download files from the current snapshot without SSO. For a normal space, set a separate guest password (12–256 characters). Dropnote verifies it on the server and serves the current content over HTTPS. The server stores a salted password hash. HTTPS protects the transfer, and the original remains readable on the server. For an encrypted space, the browser seals the current note and file list into a fixed snapshot at link creation. Guests use the space passphrase to decrypt the snapshot and files locally. Replace the link to share later changes. The snapshot's encrypted note and file list are limited to 1 MiB combined. Attached file bytes stay in the original space, so removing a file there also makes it unavailable to guests. Older encrypted guest links created before fixed snapshots became available must be recreated. A regular link to a normal space shows the latest state on each open. Optionally include the password or passphrase in the copied link or QR code. It stays in the URL fragment until the browser removes it. Anyone who receives the link and its credential can use it while it is valid.
+
+An optional **One-time link** requires an explicit **Open space** action even if the passphrase was included. Previews and incorrect passphrases do not redeem it. After redemption the same tab can download multiple files until expiry or revocation. Reloading or closing the tab ends its access. Content already displayed, copied or downloaded may remain with a recipient.
+
 ### Nginx transport example
 
 ```nginx
@@ -267,7 +302,7 @@ The existing JSON index holds seen revisions and known accounts. Content revisio
 
 ```sh
 npm run typecheck   # tsc --noEmit
-npm run build       # bundle the editor frontend into public/js/editor.bundle.js
+npm run build       # bundle the editor and guest frontends into public/js/
 npm test            # build the frontend and run the black-box tests
 ```
 
