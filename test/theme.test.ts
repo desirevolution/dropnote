@@ -81,6 +81,8 @@ test("the pages degrade sanely to narrow screens (Story 36)", async () => {
       "the mobile view menu is constrained by the full toolbar, even if its button wraps onto the left");
     assert.match(style, /\.note-card:focus-within \{[^}]*outline: 2px solid var\(--accent\); outline-offset: 1px/,
       "the editor focus ring is drawn outside the card");
+    assert.match(style, /@media \(pointer: coarse\)\s*\{[^}]*#paste-image[^}]*display: none/,
+      "the clipboard image button is hidden for touch-first devices");
     assert.match(style, /#pad-qr-dialog, #space-access-dialog\s*{[^}]*min\(34rem, calc\(100vw - 2rem\)\)/, "the QR and access dialogs fit narrow viewports");
   } finally {
     await server.stop();

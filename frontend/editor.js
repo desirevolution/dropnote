@@ -62,9 +62,17 @@ let canUndo = false;
 let canRedo = false;
 let lockChannel;
 let uploadNoticeTimer;
+let enteringWorkspace = false;
+const desktopPointer = window.matchMedia("(pointer: fine)");
+
+function focusDesktopNote() {
+  if (desktopPointer.matches && writable && !workspace.hidden && tabs.selected === "note" &&
+      !document.querySelector("dialog[open]")) note?.focus();
+}
 
 const tabs = initWorkspaceTabs({
   filesLink: new URLSearchParams(location.search).get("view") === "files",
+  onNoteClick: focusDesktopNote,
   beforeChange(previous) {
     $("image-paste-fallback").hidden = true;
     $("image-paste-status").hidden = true;
@@ -320,6 +328,14 @@ function setState(state) {
   connectionState = state;
   guestLinks?.refreshControls();
   applyEditingState();
+
+  if (active && enteringWorkspace) {
+    enteringWorkspace = false;
+    const focused = document.activeElement;
+    if (focused === document.body || focused === document.documentElement || focused?.closest("#key-prompt[hidden]")) {
+      focusDesktopNote();
+    }
+  }
 }
 
 function applyEditingState() {
@@ -417,6 +433,7 @@ async function openPad(key = null) {
       updateActions();
     },
   });
+  enteringWorkspace = true;
   sync = startLiveSync(doc, {
     metadata, key, proof, cursorKey,
     onState(state) {

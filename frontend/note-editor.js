@@ -267,6 +267,9 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
       editor.dispatch({ changes: { from: end, insert: separator + text }, userEvent: "input.paste" });
       undoManager.stopCapturing();
     },
+    focus() {
+      if (writable) editor.focus();
+    },
     focusEnd,
     replaceText(text) {
       if (!writable || editor.state.doc.toString() === text) return;

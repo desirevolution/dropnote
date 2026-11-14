@@ -1,5 +1,5 @@
 import { t } from "./i18n.js";
-export function initWorkspaceTabs({ filesLink, beforeChange, afterChange }) {
+export function initWorkspaceTabs({ filesLink, beforeChange, afterChange, onNoteClick }) {
   const toolbar = document.getElementById("workspace-toolbar");
   const views = ["note", "files"];
   const tabs = views.map((view) => document.getElementById(`${view}-tab`));
@@ -24,7 +24,10 @@ export function initWorkspaceTabs({ filesLink, beforeChange, afterChange }) {
   }
 
   for (const [index, tab] of tabs.entries()) {
-    tab.addEventListener("click", () => select(views[index]));
+    tab.addEventListener("click", (event) => {
+      select(views[index]);
+      if (index === 0 && event.detail > 0) onNoteClick();
+    });
     tab.addEventListener("keydown", (event) => {
       let next;
       if (event.key === "ArrowRight" || event.key === "ArrowLeft") next = 1 - index;

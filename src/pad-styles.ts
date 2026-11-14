@@ -259,7 +259,7 @@ export const PAD_CSS = `
     #note .cm-editor { flex: 1 1 auto; height: auto; min-height: 13rem; contain: size; }
   }
   @media (pointer: coarse) {
-    .drop-zone-hint { display: none; }
+    .drop-zone-hint, #paste-image { display: none; }
   }
   @media (max-width: 26rem) {
     .topbar-inner { flex-wrap: wrap; padding-block: .6rem; }
