@@ -28,7 +28,7 @@ export function initWorkspaceTabs({ filesLink, beforeChange, afterChange }) {
     tab.addEventListener("keydown", (event) => {
       let next;
       if (event.key === "ArrowRight" || event.key === "ArrowLeft") next = 1 - index;
-      else if (event.key === t("Home")) next = 0;
+      else if (event.key === "Home") next = 0;
       else if (event.key === "End") next = tabs.length - 1;
       else return;
       event.preventDefault();

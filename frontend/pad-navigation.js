@@ -169,7 +169,7 @@ export function initPadNavigation(metadata) {
       list.replaceChildren(...pads.map((pad) => {
         const row = document.createElement("li");
         const info = document.createElement("div");
-        info.className = "my-pad-info";
+        info.className = "my-pad-info space-row-info";
         const link = document.createElement("a");
         link.href = localPadAddress(pad.url);
         link.textContent = spaceLabel(pad.slug, pad.displayName);
@@ -190,7 +190,17 @@ export function initPadNavigation(metadata) {
           removeMyPad(storage, pad.url, pad.createdAt);
           render();
         });
-        row.append(remove);
+        const menu = document.createElement("details");
+        menu.className = "pad-menu space-row-menu";
+        menu.dataset.actionMenu = "";
+        const trigger = document.createElement("summary");
+        trigger.textContent = "⋯";
+        trigger.setAttribute("aria-label", t("Actions for {name}", { name: link.textContent }));
+        const actions = document.createElement("div");
+        actions.className = "menu-items";
+        actions.append(remove);
+        menu.append(trigger, actions);
+        row.append(menu);
         return row;
       }));
       $("my-pads-empty").hidden = pads.length > 0;
@@ -235,14 +245,14 @@ export function initPadNavigation(metadata) {
     saveLocal(STORAGE_KEY, null);
     render();
   });
-  document.querySelector('[data-open-dialog="my-pads-dialog"]')?.addEventListener("click", async () => {
+  document.querySelector('[data-open-dialog="owned-spaces-dialog"]')?.addEventListener("click", async () => {
     const storage = localStore();
-    if (!storage || checking) return;
+    if (!list || !storage || checking) return;
     checking = true;
     const revision = bookmarkRevision;
     try {
       for (const saved of listMyPads(storage)) {
-        if (revision !== bookmarkRevision || !$("my-pads-dialog").open) break;
+        if (revision !== bookmarkRevision || !$("owned-spaces-dialog").open) break;
         if (saved.slug === "default" || !localPadAddress(saved.url)) continue;
         const response = await fetch(`/api/pads/${encodeURIComponent(saved.slug)}`, {
           cache: "no-store", signal: AbortSignal.timeout(5_000),

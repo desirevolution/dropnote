@@ -102,6 +102,7 @@ export function renderPadPage(pad: PadRecord, options: PadPageOptions): string {
     createdAt: pad.createdAt,
     expiresAt: pad.expiresAt,
     encrypted: pad.kind === "encrypted",
+    guestEnabled: Boolean(options.guestEnabled),
     path: fixed ? "/default" : `${options.padPath}/${pad.slug}`,
     encryption: pad.encryption && { salt: pad.encryption.salt, check: pad.encryption.check },
     pinProtected: pad.pin !== undefined,
@@ -113,6 +114,8 @@ export function renderPadPage(pad: PadRecord, options: PadPageOptions): string {
   }).replace(/</g, "\\u003c");
   const isEncrypted = pad.kind === "encrypted";
   const canShareWithGuests = options.guestEnabled && canManage && !fixed;
+  const canManageAccess = Boolean(username && canManage && !fixed);
+  const qrButton = `<button type="button" id="show-pad-qr" data-open-dialog="pad-qr-dialog" aria-haspopup="dialog">${t(canShareWithGuests || canManageAccess ? "Open on another device" : "QR code")}</button>`;
   return `<!doctype html>
 <html lang="${language}">
 <head>
@@ -131,13 +134,17 @@ ${PAD_CSS}
   <div class="topbar-inner">
     <div class="brand-group">
       <a class="brand" href="${PROJECT_URL}" title="${t("Dropnote on GitHub")}" aria-label="${t("Dropnote on GitHub")}"><span class="brand-mark">${icon("pad")}</span>Dropnote</a>
-      <span class="release-version">${releaseTag ?? "dev"}</span>
     </div>
     <nav class="actions" aria-label="${t("Spaces")}">
-      <a href="/" id="home-link" class="home-link">${icon("home")} ${t("Home")}</a>
+      <a href="/" id="home-link" class="home-link" aria-label="${t("Home")}">${icon("home")} ${t("Home")}</a>
       <button type="button" data-open-dialog="owned-spaces-dialog" aria-haspopup="dialog">${t("My spaces")}${username ? ` <span id="access-request-badge" class="request-count" role="img" hidden></span> <span id="shared-space-badge" class="request-count" role="img" hidden></span>` : ""}</button>
-      ${username ? `<button type="button" data-open-dialog="my-pads-dialog" aria-haspopup="dialog">${t("Bookmarks")}</button>` : ""}
-      <button type="button" id="theme-toggle" data-light-label="${t("Light mode")}" data-dark-label="${t("Dark mode")}" class="icon-button" aria-label="${t("Toggle dark or light mode")}">${icon("moon", "theme-moon")}${icon("sun", "theme-sun")}</button>
+      <details class="pad-menu" id="appearance-menu" data-action-menu>
+        <summary aria-label="${t("Appearance and version")}" title="${t("Appearance and version")}">${icon("view")}</summary>
+        <div class="menu-items">
+          <button type="button" id="theme-toggle" data-light-label="${t("Light mode")}" data-dark-label="${t("Dark mode")}" class="icon-button" aria-label="${t("Toggle dark or light mode")}">${icon("moon", "theme-moon")}${icon("sun", "theme-sun")}</button>
+          <span class="release-version">${releaseTag ?? "dev"}</span>
+        </div>
+      </details>
       ${username ? `<span class="account-name" title="${username}">${username}</span>` : ""}
       <button type="button" class="primary" data-open-dialog="new-pad-dialog" aria-haspopup="dialog">${icon("plus")} ${t("New space")}</button>
     </nav>
@@ -155,18 +162,22 @@ ${PAD_CSS}
         <span id="start-pad-marker" class="start-marker" hidden>${icon("home")} ${t("Start page")}</span>
       </div>
     </div>
+    <div class="pad-share-controls">
     <div class="actions">
-      <span id="copy-status" role="status"></span>
       <button type="button" id="copy-link">${icon("link")} ${t("Copy link")}</button>
-      <details class="pad-menu" id="pad-menu">
+      ${canShareWithGuests || canManageAccess ? `<details class="pad-menu" data-action-menu>
+        <summary>${t("Share")}</summary>
+        <div class="menu-items">
+          ${qrButton}
+          ${canManageAccess ? `<button type="button" data-open-dialog="space-access-dialog" aria-haspopup="dialog">${t("Manage user access")}</button>` : ""}
+          ${canShareWithGuests ? `<button type="button" data-open-dialog="guest-link-dialog" aria-haspopup="dialog">${t(pad.guestLink && Date.parse(pad.guestLink.expiresAt) > Date.now() && (!isEncrypted || pad.guestLink.snapshot) ? "Manage guest link" : "Create guest link")}</button>` : ""}
+        </div>
+      </details>` : qrButton}
+      <details class="pad-menu" id="pad-menu" data-action-menu>
         <summary aria-label="${t("Space actions")}" title="${t("Space actions")}">⋯</summary>
         <div class="menu-items">
-          <button type="button" id="show-pad-qr" data-open-dialog="pad-qr-dialog" aria-haspopup="dialog">${t("QR code")}</button>
-          ${canShareWithGuests ? `<button type="button" data-open-dialog="guest-link-dialog" aria-haspopup="dialog">${t("Guest link")}</button>` : ""}
-          ${username && canManage && !fixed ? `<button type="button" data-open-dialog="space-access-dialog" aria-haspopup="dialog">${t("Manage access")}</button>` : ""}
           ${username && !canManage && !fixed ? `<button type="button" id="remember-pad">${t("Bookmark space")}</button>` : ""}
           <button type="button" id="set-start-pad">${t("Set as start page")}</button>
-          <button type="button" id="download-note" disabled>${t("Download text (.txt)")}</button>
           ${isEncrypted ? `<button type="button" id="lock-pad" hidden>${t("Lock space")}</button>` : ""}
           ${!fixed && canManage ? `<button type="button" id="rename-space" data-open-dialog="rename-dialog" aria-haspopup="dialog" disabled>${t("Rename space")}</button>` : ""}
           ${!fixed && canManage ? `<button type="button" id="change-ttl" data-open-dialog="ttl-dialog" disabled>${t("Change expiry")}</button>` : ""}
@@ -177,10 +188,12 @@ ${PAD_CSS}
         </div>
       </details>
     </div>
+    <p id="copy-status" role="status"></p>
+    </div>
   </header>
 
   ${isEncrypted ? `<section class="access-panel" id="key-prompt" aria-labelledby="key-title" hidden>
-    <h2 id="key-title">${t("Unlock this space")}</h2>
+    <h2 id="key-title">${t("Unlock space")}</h2>
     <form id="key-form" class="passphrase-form">
       <label>${t("Passphrase")}
         <input name="passphrase" id="key-input" type="password" autocapitalize="none" spellcheck="false" required autocomplete="off">
@@ -220,10 +233,11 @@ ${PAD_CSS}
       </div>
       <div class="actions workspace-actions">
         <div class="actions" id="note-tools">
-          <button type="button" class="quiet" id="paste-note" disabled>${icon("paste")} ${t("Paste text")}</button>
+          <button type="button" class="quiet" id="paste-note" disabled>${icon("paste")} ${t("Append text")}</button>
           <button type="button" class="quiet" id="copy-note" disabled>${icon("copy")} ${t("Copy text")}</button>
           <button type="button" class="quiet" id="undo-note" aria-label="${t("Undo")}" title="${t("Undo")}" disabled>${icon("undo")}</button>
           <button type="button" class="quiet" id="redo-note" aria-label="${t("Redo")}" title="${t("Redo")}" disabled>${icon("redo")}</button>
+          <button type="button" class="quiet" id="download-note" disabled>${t("Download text (.txt)")}</button>
           <details id="note-view" class="pad-menu">
             <summary>${icon("view")} ${t("View options")}</summary>
             <div class="menu-items">
@@ -239,9 +253,10 @@ ${PAD_CSS}
               <label class="checkbox-field"><input type="checkbox" id="line-numbers"> ${t("Line numbers")}</label>
             </div>
           </details>
-          <button type="button" id="choose-files" disabled>${icon("plus")} ${t("Add files")}</button>
         </div>
-        <div id="files-tools">
+        <div id="files-tools" class="actions">
+          <button type="button" id="choose-files" disabled>${icon("plus")} ${t("Add files")}</button>
+          <button type="button" id="paste-image" disabled>${icon("paste")} ${t("Paste image")}</button>
           <button type="button" id="copy-files-link" class="quiet">${icon("link")} ${t("Copy files link")}</button>
         </div>
       </div>
@@ -251,6 +266,7 @@ ${PAD_CSS}
       <span role="status" id="upload-notice-text"></span>
       <button type="button" class="quiet" id="show-upload">${t("Show files")}</button>
     </div>
+    <p id="image-paste-status" role="status" hidden></p>
     <p id="attachment-error" class="attachment-error" role="alert" hidden></p>
     <ul id="attachment-uploads" aria-label="${t("Transfers")}"></ul>
     <section class="card note-card" id="note-panel" role="tabpanel" aria-labelledby="note-tab" hidden>
@@ -337,27 +353,15 @@ ${PAD_CSS}
     </form>
   </dialog>
 
-  ${username ? `<dialog id="my-pads-dialog" aria-labelledby="my-pads-title">
-    <header class="dialog-head">
-      <h2 id="my-pads-title">${t("Bookmarks")}</h2>
-      <button type="button" class="icon-button quiet" data-close-dialog aria-label="${t("Close")}">${icon("close")}</button>
-    </header>
-    <p>${t("Bookmarks saved in this browser.")}</p>
-    <ul id="my-pads-list"></ul>
-    <p class="files-empty" id="my-pads-empty" hidden>${t("No bookmarks yet.")}</p>
-    <div class="dialog-actions">
-      <button type="button" id="clear-my-pads" hidden>${t("Clear bookmarks")}</button>
-    </div>
-  </dialog>` : ""}
-
   <dialog id="owned-spaces-dialog" aria-labelledby="owned-spaces-title">
     <header class="dialog-head">
       <h2 id="owned-spaces-title">${t("My spaces")}</h2>
       <button type="button" class="icon-button quiet" data-close-dialog aria-label="${t("Close")}">${icon("close")}</button>
     </header>
     ${defaultSpace}
-    <label>${t("Sort spaces")}
-      <select id="space-sort"><option value="created">${t("Recently created")}</option><option value="updated">${t("Recently changed")}</option></select>
+    ${username ? `<h3 class="spaces-section-title">${t("Owned spaces")}</h3>` : ""}
+    <label class="space-sort">${t("Sort by")}
+      <select id="space-sort"><option value="created">${t("Creation date")}</option><option value="updated">${t("Last changed")}</option></select>
     </label>
     <ul class="account-list" id="owned-spaces-list"></ul>
     <p class="files-empty" id="owned-spaces-status" role="status"></p>
@@ -365,6 +369,15 @@ ${PAD_CSS}
       <h3 id="shared-spaces-title">${t("Shared with me")}</h3>
       <ul class="account-list" id="shared-spaces-list"></ul>
       <p class="files-empty" id="shared-spaces-empty">${t("No spaces shared with you yet.")}</p>
+    </section>` : ""}
+    ${username ? `<section class="shared-spaces" aria-labelledby="my-pads-title">
+      <h3 id="my-pads-title">${t("Bookmarks")}</h3>
+    <p>${t("Bookmarks saved in this browser.")}</p>
+    <ul id="my-pads-list"></ul>
+    <p class="files-empty" id="my-pads-empty" hidden>${t("No bookmarks yet.")}</p>
+    <div class="dialog-actions">
+      <button type="button" id="clear-my-pads" hidden>${t("Clear bookmarks")}</button>
+    </div>
     </section>` : ""}
   </dialog>
 
@@ -490,6 +503,7 @@ ${PAD_CSS}
       <label class="checkbox-field"><input type="checkbox" id="include-passphrase"> ${t("Include passphrase")}</label>
       <p id="share-secret-warning" hidden>${t("The link and QR code contain the passphrase. Share them only with people who should be able to unlock this space.")}</p>
     </div>
+    ${(username || options.guestEnabled) ? `<p>${t("The other device may need to sign in to open this space.")}</p>` : ""}
     <canvas id="pad-qr" aria-label="${t("QR code for this space")}" role="img" hidden></canvas>
     <p id="pad-qr-error" class="form-error" role="alert" hidden>${t("Could not generate the QR code. You can still copy the link.")}</p>
     <a id="pad-qr-link"></a>

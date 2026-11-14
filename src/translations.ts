@@ -317,7 +317,22 @@ const german: Record<string, string> = {
   "Guest link deactivated.": "Gastlink deaktiviert.",
   "Hide QR code": "QR-Code ausblenden",
   "Guest link created.": "Gastlink erstellt.",
-  "Guest link replaced.": "Gastlink ersetzt."
+  "Guest link replaced.": "Gastlink ersetzt.",
+  "Share": "Teilen",
+  "Manage user access": "Zugriff für Benutzer verwalten",
+  "Appearance and version": "Darstellung und Version",
+  "Append text": "Text anhängen",
+  "Paste image": "Bild einfügen",
+  "Internal link copied.": "Interner Link kopiert.",
+  "Sort by": "Sortieren nach",
+  "Creation date": "Erstellungsdatum",
+  "Last changed": "Letzte Änderung",
+  "Owned spaces": "Eigene Ablagen",
+  "Actions for {name}": "Aktionen für {name}",
+  "Unlock space": "Ablage entsperren",
+  "The other device may need to sign in to open this space.": "Auf dem anderen Gerät ist gegebenenfalls eine Anmeldung erforderlich.",
+  "No image in the clipboard. Use Add files to choose an image.": "Kein Bild in der Zwischenablage. Über „Dateien hinzufügen“ kannst du ein Bild auswählen.",
+  "Clipboard images are unavailable here. Use Add files to choose an image.": "Der Browser hat keinen Zugriff auf Bilder in der Zwischenablage. Verwende „Dateien hinzufügen“."
 };
 
 export function translate(language: Language, message: string, values?: Record<string, string | number>): string {

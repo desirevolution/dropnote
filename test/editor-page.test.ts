@@ -47,7 +47,7 @@ test("the Default Pad shows the plain-text editor alongside its files", async ()
       "transfer progress is outside both panels");
     assert.doesNotMatch(body, /id="full-width"/, "the note tab already uses the available width");
     assert.doesNotMatch(body, /id="preview"/, "the Note has no rendered preview");
-    assert.match(body, /<button[^>]*id="choose-files"/, "the note has a keyboard-accessible file picker");
+    assert.match(body, /id="files-tools"[^>]*>[\s\S]*?id="choose-files"[^>]*>[\s\S]*?id="paste-image"/, "the files tab offers a picker and clipboard image action");
     assert.match(body, /<button[^>]*id="file-drop"[^>]*disabled[\s\S]*?Choose files[\s\S]*?<\/button>/,
       "the file drop zone is a keyboard-accessible file picker when uploads are enabled");
     assert.match(body, /<p[^>]*id="sync-error"[^>]*role="alert"/, "sync errors are announced separately from the editor");

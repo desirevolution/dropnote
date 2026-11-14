@@ -38,23 +38,38 @@ export function ttlChoice(element) {
 
 export function initPadActions() {
   document.querySelectorAll("[data-open-dialog]").forEach((button) => {
-    button.addEventListener("click", () => $(button.dataset.openDialog).showModal());
+    button.addEventListener("click", () => {
+      const dialog = $(button.dataset.openDialog);
+      const menu = button.closest("[data-action-menu]");
+      if (menu) {
+        dialog.addEventListener("close", () => {
+          if (!document.querySelector("dialog[open]")) menu.querySelector("summary").focus();
+        }, { once: true });
+      }
+      dialog.showModal();
+    });
   });
   document.querySelectorAll("[data-close-dialog]").forEach((button) => {
     button.addEventListener("click", () => button.closest("dialog").close());
   });
-  const menu = $("pad-menu");
-  menu.addEventListener("click", (event) => {
-    if (event.target.closest(".menu-items button, .menu-items a")) menu.open = false;
-  });
+  const closeMenu = (menu, focus) => {
+    menu.open = false;
+    if (focus) menu.querySelector("summary").focus();
+  };
   document.addEventListener("click", (event) => {
-    if (!menu.contains(event.target)) menu.open = false;
-  });
-  menu.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && menu.open) {
-      menu.open = false;
-      menu.querySelector("summary").focus();
+    for (const menu of document.querySelectorAll("[data-action-menu][open]")) {
+      if (!menu.contains(event.target) || event.target.closest(".menu-items button, .menu-items a")) {
+        const focus = menu.contains(document.activeElement) && !document.querySelector("dialog[open]") &&
+          !event.target.closest("[data-open-dialog]");
+        closeMenu(menu, focus);
+      }
     }
+  });
+  document.addEventListener("keydown", (event) => {
+    const menu = event.target.closest("[data-action-menu][open]");
+    if (event.key !== "Escape" || !menu) return;
+    event.preventDefault();
+    closeMenu(menu, true);
   });
 
   const form = $("new-pad-form");

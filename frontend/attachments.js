@@ -32,6 +32,8 @@ const input = $("attachment-input");
 const errorLine = $("attachment-error");
 const dropZone = $("file-drop");
 const choose = $("choose-files");
+const pasteImage = $("paste-image");
+const pasteStatus = $("image-paste-status");
 const previewTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp", "image/x-icon"]);
 const imageExtensions = new Map([["image/jpeg", "jpg"], ["image/png", "png"], ["image/gif", "gif"], ["image/webp", "webp"], ["image/avif", "avif"], ["image/bmp", "bmp"], ["image/svg+xml", "svg"]]);
 
@@ -43,6 +45,7 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
   let dragDepth = 0;
   let preview;
   let openingImage = false;
+  let readingImages = false;
   const imageDialog = $("image-dialog");
   const fullImage = $("full-image");
   const copyImage = $("copy-image");
@@ -60,21 +63,22 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
     uploadFiles(input.files);
     input.value = "";
   }, { signal });
-  dropZone.addEventListener("dragenter", (event) => {
+  const filesPanel = $("files-card");
+  filesPanel.addEventListener("dragenter", (event) => {
     if (!canEdit || !event.dataTransfer.types.includes("Files")) return;
     dragDepth += 1;
-    dropZone.classList.add("is-dragging");
+    filesPanel.classList.add("is-dragging");
   }, { signal });
-  dropZone.addEventListener("dragleave", () => {
+  filesPanel.addEventListener("dragleave", () => {
     dragDepth = Math.max(0, dragDepth - 1);
-    if (dragDepth === 0) dropZone.classList.remove("is-dragging");
+    if (dragDepth === 0) filesPanel.classList.remove("is-dragging");
   }, { signal });
-  dropZone.addEventListener("dragover", (event) => {
+  filesPanel.addEventListener("dragover", (event) => {
     if (!canEdit || !event.dataTransfer.types.includes("Files")) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
   }, { signal });
-  dropZone.addEventListener("drop", (event) => {
+  filesPanel.addEventListener("drop", (event) => {
     if (!event.dataTransfer.types.includes("Files")) return;
     event.preventDefault();
     resetDrag();
@@ -86,7 +90,6 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
     }, { signal });
   }
   const note = $("note");
-  const filesPanel = $("files-card");
   document.addEventListener("paste", (event) => {
     if (!canEdit || event.defaultPrevented || document.querySelector("dialog[open]")) return;
     const target = event.target;
@@ -101,13 +104,49 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
     const images = files.filter((file) => file?.type.startsWith("image/"));
     if (!images.length) return;
     event.preventDefault();
+    uploadImages(images);
+  }, { capture: true, signal });
+
+  function imagePasteStatus(message) {
+    pasteStatus.textContent = message ? t(message) : "";
+    pasteStatus.hidden = !message || filesPanel.hidden;
+  }
+
+  pasteImage.addEventListener("click", async () => {
+    if (!canEdit || readingImages || filesPanel.hidden) return;
+    const stillInFiles = () => !signal.aborted && canEdit && !filesPanel.hidden &&
+      !document.querySelector("dialog[open]");
+    readingImages = true;
+    pasteImage.disabled = true;
+    imagePasteStatus("");
+    try {
+      if (!navigator.clipboard?.read) throw new Error();
+      const items = await navigator.clipboard.read();
+      const images = [];
+      for (const item of items) {
+        const mime = item.types.find((type) => type.startsWith("image/"));
+        if (mime) images.push(await item.getType(mime));
+      }
+      if (!stillInFiles()) return;
+      if (images.length) uploadImages(images);
+      else imagePasteStatus("No image in the clipboard. Use Add files to choose an image.");
+    } catch {
+      if (stillInFiles()) imagePasteStatus("Clipboard images are unavailable here. Use Add files to choose an image.");
+    } finally {
+      readingImages = false;
+      if (!signal.aborted) pasteImage.disabled = !canEdit;
+    }
+  }, { signal });
+
+  function uploadImages(images) {
+    imagePasteStatus("");
     const timestamp = new Date().toISOString().slice(0, 19).replace("T", "_").replaceAll(":", "-");
     uploadFiles(images.map((file, index) => {
       if (file.name && !/^image\.(png|jpe?g|webp)$/i.test(file.name)) return file;
       const extension = imageExtensions.get(file.type) ?? "img";
       return new File([file], `image-${timestamp}${index ? `-${index + 1}` : ""}.${extension}`, { type: file.type });
     }));
-  }, { capture: true, signal });
+  }
 
   imageDialog.addEventListener("close", () => {
     if (!imageDialog.open) closePreview();
@@ -143,7 +182,7 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
 
   function resetDrag() {
     dragDepth = 0;
-    dropZone.classList.remove("is-dragging");
+    filesPanel.classList.remove("is-dragging");
   }
 
   function uploadFiles(files) {
@@ -158,7 +197,8 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
   function render() {
     const entries = attachments.toArray().filter((entry) =>
       entry && typeof entry.name === "string" && /^[0-9a-f]{32}$/.test(entry.blobId));
-    $("files-empty").hidden = entries.length !== 0;
+    dropZone.hidden = !canEdit || entries.length > 0;
+    $("files-empty").hidden = canEdit || entries.length !== 0;
     entries.reverse().sort((left, right) => String(right.addedAt ?? "").localeCompare(String(left.addedAt ?? "")));
     list.replaceChildren(...entries.map(rowFor));
     onCount(entries.length);
@@ -372,7 +412,8 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
       if (enabled === canEdit) return;
       canEdit = enabled;
       input.disabled = choose.disabled = dropZone.disabled = !enabled;
-      dropZone.hidden = !enabled;
+      pasteImage.disabled = !enabled || readingImages;
+      if (!enabled) imagePasteStatus("");
       for (const retry of uploadArea.querySelectorAll(".retry-upload")) retry.disabled = !enabled;
       resetDrag();
       render();
@@ -397,6 +438,8 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
       attachments.unobserve(render);
       closePreview();
       if (imageDialog.open) imageDialog.close();
+      imagePasteStatus("");
+      pasteImage.disabled = true;
       uploadArea.replaceChildren();
       list.replaceChildren();
       showError(null);

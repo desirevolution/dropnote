@@ -106,6 +106,7 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
   }
 
   function render() {
+    if (ready) open.textContent = t(link ? "Manage guest link" : "Create guest link");
     $("description").hidden = view === "confirm";
     $("active").hidden = view !== "manage" || !link;
     $("share").hidden = Boolean(link?.redeemedAt);

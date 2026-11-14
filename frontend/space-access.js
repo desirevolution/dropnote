@@ -32,6 +32,7 @@ export function initSpaceAccess(api, deleteSpace, unreadGrantId) {
   let refreshAccessDialog = () => {};
   let latestOwned = [];
   const ownedDetails = new Map();
+  const guestControls = new Map();
   const sorter = $("space-sort");
   const toast = $("access-toast");
   $("access-toast-close").addEventListener("click", () => { toast.hidden = true; });
@@ -85,6 +86,7 @@ export function initSpaceAccess(api, deleteSpace, unreadGrantId) {
       for (const space of spaces) {
         const detail = ownedDetails.get(space.slug);
         if (detail) showChangeDetails(detail, space, ownedLabels(space));
+        guestControls.get(space.slug)?.(space.guestStatus);
       }
     }
     if (badge && request > appliedRequest) {
@@ -144,14 +146,17 @@ export function initSpaceAccess(api, deleteSpace, unreadGrantId) {
       const detail = document.createElement("span");
       detail.className = "my-pad-detail";
       showChangeDetails(detail, space, [sharingLabel(space)]);
-      row.append(link, startBadge(space));
+      const info = document.createElement("div");
+      info.className = "space-row-info";
+      info.append(link, startBadge(space));
       if (space.isNew) {
         const marker = document.createElement("span");
         marker.className = "request-count";
         marker.textContent = t("New");
-        row.append(marker);
+        info.append(marker);
       }
-      row.append(detail);
+      info.append(detail);
+      row.append(info);
       return row;
     }));
     if (focused) [...sharedList.querySelectorAll("a")].find((link) => link.href === focused)?.focus();
@@ -232,7 +237,6 @@ export function initSpaceAccess(api, deleteSpace, unreadGrantId) {
         name: space.sharedWith[0] + (space.sharedWith.length > 1 ? ` +${space.sharedWith.length - 1}` : ""),
       }) : "",
       space.encrypted ? t("Encrypted") : "",
-      space.guestStatus ? t(space.guestStatus.redeemedAt ? "Guest link redeemed" : "Guest link active") : "",
       space.expiresAt ? t("Expires {date}", { date: dateLabel(space.expiresAt) }) : "",
     ];
   }
@@ -252,6 +256,7 @@ export function initSpaceAccess(api, deleteSpace, unreadGrantId) {
     owned.replaceChildren();
     requestLinks.clear();
     ownedDetails.clear();
+    guestControls.clear();
     ownedStatus.textContent = t("Loading…");
     try {
       const spaces = await loadOwnedSpaces();
@@ -266,7 +271,19 @@ export function initSpaceAccess(api, deleteSpace, unreadGrantId) {
         detail.className = "my-pad-detail";
         ownedDetails.set(space.slug, detail);
         showChangeDetails(detail, space, ownedLabels(space));
-        row.append(link, startBadge(space), detail);
+        const info = document.createElement("div");
+        info.className = "space-row-info";
+        info.append(link, startBadge(space), detail);
+        const menu = document.createElement("details");
+        menu.className = "pad-menu space-row-menu";
+        menu.dataset.actionMenu = "";
+        const trigger = document.createElement("summary");
+        trigger.textContent = "⋯";
+        trigger.setAttribute("aria-label", t("Actions for {name}", { name: link.textContent }));
+        const actions = document.createElement("div");
+        actions.className = "menu-items";
+        menu.append(trigger, actions);
+        row.append(info, menu);
         if (badge) {
           const requests = document.createElement("a");
           requests.href = `${space.path}#space-access-dialog`;
@@ -280,12 +297,12 @@ export function initSpaceAccess(api, deleteSpace, unreadGrantId) {
               openAccess.click();
             });
           }
-          row.append(requests);
+          info.append(requests);
         }
         if (Object.hasOwn(space, "guestStatus")) {
           const guest = document.createElement("a");
           guest.href = `${space.path}?guest=1`;
-          guest.textContent = t("Manage guest link");
+
           const currentGuest = document.querySelector('[data-open-dialog="guest-link-dialog"]');
           if (currentGuest && location.pathname === space.path) {
             guest.addEventListener("click", (event) => {
@@ -295,7 +312,17 @@ export function initSpaceAccess(api, deleteSpace, unreadGrantId) {
               currentGuest.click();
             });
           }
-          row.append(guest);
+          const showGuest = (status) => {
+            guest.textContent = t(status ? (status.redeemedAt ? "Guest link redeemed" : "Guest link active") : "Create guest link");
+            const parent = status ? info : actions;
+            if (guest.parentElement !== parent) {
+              if (status) info.append(guest);
+              else actions.prepend(guest);
+            }
+          };
+          guest.className = "space-guest-action";
+          guestControls.set(space.slug, showGuest);
+          showGuest(space.guestStatus);
         }
         const remove = document.createElement("button");
         remove.type = "button";
@@ -308,6 +335,8 @@ export function initSpaceAccess(api, deleteSpace, unreadGrantId) {
             if (!await deleteSpace(space) || load !== loadNumber) return;
             row.remove();
             requestLinks.delete(space.slug);
+            guestControls.delete(space.slug);
+            ownedDetails.delete(space.slug);
             void loadOwnedSpaces().catch(() => {});
             ownedStatus.textContent = owned.children.length ? "" : t("You haven't created any spaces yet.");
           } catch (error) {
@@ -316,7 +345,7 @@ export function initSpaceAccess(api, deleteSpace, unreadGrantId) {
             remove.disabled = false;
           }
         });
-        row.append(remove);
+        actions.append(remove);
         owned.append(row);
       }
     } catch {

@@ -66,6 +66,8 @@ let uploadNoticeTimer;
 const tabs = initWorkspaceTabs({
   filesLink: new URLSearchParams(location.search).get("view") === "files",
   beforeChange(previous) {
+    $("image-paste-status").hidden = true;
+    $("image-paste-status").textContent = "";
     if (previous === "note") note?.saveScrollPosition();
   },
   afterChange(view) {
@@ -84,7 +86,7 @@ const guestLinks = initGuestLinks(api, encryption, () => proof, () => guestKey,
 initSpaceAccess(api, deleteSpace, metadata.unreadGrantId);
 const navigation = initPadNavigation(metadata);
 
-$("copy-link").addEventListener("click", () => copyText(padUrl, $("copy-status"), t("Link copied.")));
+$("copy-link").addEventListener("click", () => copyText(padUrl, $("copy-status"), t(metadata.guestEnabled ? "Internal link copied." : "Link copied.")));
 $("copy-files-link").addEventListener("click", () => copyText(filesUrl.href, $("copy-status"), t("Files link copied.")));
 showUpload.addEventListener("click", () => tabs.showFiles());
 const qr = initShareQr(padUrl, metadata.slug);

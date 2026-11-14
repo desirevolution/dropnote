@@ -149,8 +149,17 @@ export const PAD_CSS = `
   #my-pads-list li, .account-list li { display: flex; align-items: center; justify-content: space-between; gap: .5rem; border-bottom: 1px solid var(--border); padding: .4rem .25rem; }
   .shared-spaces { margin-block-start: 1rem; border-top: 1px solid var(--border); }
   .shared-spaces h3 { font-size: 1rem; margin-block: .75rem .25rem; }
-  #owned-spaces-list li, #shared-spaces-list li { flex-wrap: wrap; }
-  #owned-spaces-list li .my-pad-detail, #shared-spaces-list li .my-pad-detail { flex-basis: 100%; order: 1; }
+  #owned-spaces-list, #shared-spaces-list, #my-pads-list { max-height: none; overflow: visible; }
+  #owned-spaces-list li, #shared-spaces-list li, #my-pads-list li {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: .6rem;
+  }
+  .space-row-info { min-width: 0; overflow-wrap: anywhere; }
+  .space-row-info > .start-marker, .space-row-info > .request-count { margin-inline-start: .35rem; }
+  .space-row-info .my-pad-detail { margin-block-start: .2rem; }
+  .space-guest-action, .space-row-info > a.request-count { display: inline-block; margin-top: .3rem; font-size: .85rem; }
+  .space-row-menu .menu-items { max-width: min(15rem, calc(100vw - 5rem)); }
+  .space-sort { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem .65rem; padding-block: .55rem; }
+  .spaces-section-title { margin: .75rem 0 0; font-size: 1rem; }
   #owned-spaces-list li .my-pad-detail:empty { display: none; }
   .account-list li > :first-child { min-width: 0; overflow-wrap: anywhere; }
   #my-pads-list a { overflow-wrap: anywhere; }
@@ -163,6 +172,13 @@ export const PAD_CSS = `
   .menu-items a { text-decoration: none; border-radius: .25rem; }
   .menu-items a:hover { background: var(--panel); }
   .menu-items .danger, #owned-spaces-list .danger { color: var(--error); }
+  #appearance-menu { z-index: 4; }
+  #appearance-menu .menu-items { display: flex; align-items: center; gap: .5rem; padding-inline-end: .65rem; }
+  #appearance-menu .menu-items button { width: auto; }
+  #appearance-menu summary, .pad-head details[data-action-menu] > summary { padding-inline: .6rem; }
+  #files-card.is-dragging { outline: 2px solid var(--accent); outline-offset: -2px; }
+  #copy-status { min-height: 1.25em; text-align: end; color: var(--muted); font-size: .8rem; }
+  #image-paste-status { margin: 0 0 .65rem; color: var(--muted); font-size: .875rem; }
   .pad-notice { color: var(--muted); margin-bottom: .75rem; }
   .start-marker { display: inline-flex; align-items: center; gap: .3rem; width: fit-content; padding: .15rem .4rem; color: var(--accent); background: var(--accent-soft); border-radius: .25rem; font-size: .8rem; font-weight: 600; }
   .start-marker svg { width: .85rem; height: .85rem; }
@@ -230,6 +246,7 @@ export const PAD_CSS = `
     #note-tools { position: relative; column-gap: .25rem; }
     #note-view { position: static; }
     #note-view .menu-items { max-width: 100%; }
+    #files-tools { width: 100%; }
     #attachments li { grid-template-columns: minmax(0, 1fr); }
   }
   @media (pointer: fine) {
@@ -247,5 +264,7 @@ export const PAD_CSS = `
     .topbar .actions { gap: .15rem; }
     .account-name { max-inline-size: 5rem; }
     .topbar .actions button { padding-inline: .45rem; }
+    .topbar .home-link { font-size: 0; gap: 0; padding-inline: .6rem; }
+    .topbar .account-name { max-inline-size: 9rem; }
   }
 `;
