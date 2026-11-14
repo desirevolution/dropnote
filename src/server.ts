@@ -18,14 +18,21 @@ export async function startServer(config: Config): Promise<RunningServer> {
   const relay = new SyncRelay(store, pins, config);
   const onPadDeleted = (slug: string) => {
     pins.revokePad(slug);
-    return relay.forget(slug);
+    const pad = store.getPad(slug);
+    if (pad?.owner) relay.notifyAccount(pad.owner);
+    for (const grant of pad?.grants ?? []) relay.notifyAccount(grant.username);
+    relay.forget(slug);
   };
   const app = createApp(store, config, {
     pins,
     onPadDeleted,
+    notifyAccount: (username) => relay.notifyAccount(username),
+    onAttachmentChanged: (slug) => relay.attachmentChanged(slug),
+    padRevision: (pad) => relay.revision(pad),
     onGrantChanged: (slug, username, role) => {
       pins.revokeUser(slug, username);
       relay.accessChanged(slug, username, role);
+      relay.notifyAccount(username);
     },
     onExpiryChanged: (slug, expiresAt) => relay.updateExpiry(slug, expiresAt),
   });

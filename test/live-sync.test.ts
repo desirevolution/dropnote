@@ -6,6 +6,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { WebSocket } from "ws";
+import { appendFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { openUpdateLog } from "../src/update-log.ts";
 import { makeTempDataDir, startServer } from "./helpers/server.ts";
 import { SyncClient, waitFor } from "./helpers/sync-client.ts";
 
@@ -92,7 +95,7 @@ test("the relay forwards Pad traffic verbatim — no server-side merging logic",
   const server = await startServer({ dataDir });
   try {
     // Raw WebSocket clients, not Yjs: whatever one side sends, the other side
-    // receives byte-for-byte, proving the relay adds nothing of its own.
+    // receives byte-for-byte on the binary channel, alongside text control frames.
     const listener = new WebSocket(server.syncUrl("default"));
     await open(listener);
     const sender = new WebSocket(`${server.syncUrl("default")}`);
@@ -100,7 +103,8 @@ test("the relay forwards Pad traffic verbatim — no server-side merging logic",
 
     const received = new Promise<Buffer[]>((resolve) => {
       const chunks: Buffer[] = [];
-      listener.on("message", (data: Buffer) => {
+      listener.on("message", (data: Buffer, isBinary) => {
+        if (!isBinary) return;
         chunks.push(data);
         if (chunks.length === 2) resolve(chunks);
       });
@@ -166,4 +170,21 @@ test("two Yjs clients see each other's Note edits live on the Default Pad", asyn
   } finally {
     await server.stop();
   }
+});
+
+test("the revision log replays legacy updates and keeps attachment markers out of Yjs", async () => {
+  const dir = await makeTempDataDir();
+  const file = join(dir, "sync.log");
+  await writeFile(file, Buffer.from([0, 0, 0, 1, 23]));
+  let log = openUpdateLog(dir);
+  assert.deepEqual(log.current(), { revision: 1, updatedAt: null });
+  assert.equal(log.append(Buffer.alloc(0)).revision, 2);
+  const last = log.append(Buffer.from([42]));
+  assert.equal(last.revision, 3);
+  assert.ok(last.updatedAt);
+  await appendFile(file, Buffer.from([128, 0, 0, 3, 0]));
+  log = openUpdateLog(dir);
+  assert.deepEqual(log.current(), last);
+  assert.deepEqual(log.updates(), [Buffer.from([23]), Buffer.from([42])]);
+  assert.equal(log.append(Buffer.from([33])).revision, 4);
 });

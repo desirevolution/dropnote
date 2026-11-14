@@ -19,6 +19,12 @@ export function startLiveSync(doc, { metadata, key, proof, cursorKey, onState, o
   let stopped = false;
   let reconnecting = false;
   let flush = () => {};
+  let markSeen = () => {};
+  document.addEventListener("visibilitychange", scheduleSeen);
+
+  function scheduleSeen() {
+    markSeen();
+  }
 
   doc.on("update", (update, origin) => {
     if (origin === remote || stopped) return;
@@ -44,8 +50,21 @@ export function startLiveSync(doc, { metadata, key, proof, cursorKey, onState, o
     let incoming = Promise.resolve();
     let sending = false;
     let ackTimer;
+    let seenTimer;
+    let revision = -1;
+    let sentRevision = -1;
     const active = () => !stopped && socket === connection && connection.readyState === WebSocket.OPEN;
     const timer = setTimeout(() => connection.close(), 12_000);
+
+    markSeen = () => {
+      if (seenTimer || !active() || !ready || document.hidden || revision <= sentRevision) return;
+      seenTimer = setTimeout(() => {
+        seenTimer = undefined;
+        if (!active() || !ready || document.hidden) return;
+        connection.send(`seen:${revision}`);
+        sentRevision = revision;
+      }, 500);
+    };
 
     flush = async () => {
       if (!active() || !ready || !writable || sending || !pending.length) return;
@@ -75,6 +94,9 @@ export function startLiveSync(doc, { metadata, key, proof, cursorKey, onState, o
           return;
         }
         if (!message) return;
+        if (Number.isSafeInteger(message.revision) && message.type !== "seen-accepted") {
+          revision = Math.max(revision, message.revision);
+        }
         if (message.type === "pad-info") {
           if (message.createdAt !== metadata.createdAt) return unavailable();
           onExpiry(message.expiresAt);
@@ -107,6 +129,7 @@ export function startLiveSync(doc, { metadata, key, proof, cursorKey, onState, o
             // One invalid cursor cannot interrupt document sync.
           }
         }
+        markSeen();
       }).catch(() => {
         if (socket === connection && !stopped) {
           stop();
@@ -118,6 +141,7 @@ export function startLiveSync(doc, { metadata, key, proof, cursorKey, onState, o
     connection.addEventListener("close", ({ code }) => {
       clearTimeout(timer);
       clearTimeout(ackTimer);
+      clearTimeout(seenTimer);
       if (socket !== connection || stopped) return;
       ready = writable = false;
       onState("reconnecting");
@@ -165,6 +189,7 @@ export function startLiveSync(doc, { metadata, key, proof, cursorKey, onState, o
     stopped = true;
     clearTimeout(retry);
     socket?.close();
+    document.removeEventListener("visibilitychange", scheduleSeen);
     window.removeEventListener("online", checkAndReconnect);
     window.removeEventListener("offline", offline);
   }

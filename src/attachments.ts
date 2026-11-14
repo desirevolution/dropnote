@@ -29,6 +29,7 @@ export interface AttachmentDeps {
   store: PadStore;
   config: Config;
   pins: PinAuthority;
+  onAttachmentChanged?: (slug: string) => void;
 }
 
 /** The per-file or global-instance limit that rejected an upload. */
@@ -46,7 +47,7 @@ export class AttachmentLimitViolation extends Error {
   }
 }
 
-export function attachmentsRouter({ store, config, pins }: AttachmentDeps): Router {
+export function attachmentsRouter({ store, config, pins, onAttachmentChanged }: AttachmentDeps): Router {
   const router = Router();
   const activeUploads = new Set<string>();
 
@@ -179,6 +180,7 @@ export function attachmentsRouter({ store, config, pins }: AttachmentDeps): Rout
         // Promote and book the bytes together before another upload can finish.
         renameSync(partialPath, store.blobPath(slug, blobId));
         store.recordBlob(slug, blobId, received);
+        onAttachmentChanged?.(slug);
         res.status(201).json({ blobId, size: received });
       } catch (error) {
         discard();
@@ -257,7 +259,10 @@ export function attachmentsRouter({ store, config, pins }: AttachmentDeps): Rout
         res.status(500).json({ error: "Attachment deletion failed" });
         return;
       }
-      if (store.getPad(slug) === pad) store.forgetBlob(slug, blobId);
+      if (store.getPad(slug) === pad) {
+        store.forgetBlob(slug, blobId);
+        onAttachmentChanged?.(slug);
+      }
       res.status(204).end();
     });
   }

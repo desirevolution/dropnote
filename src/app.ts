@@ -14,6 +14,7 @@ import { getPadOrAnswer404, jsonNoPad, requestUsername } from "./pad-request.ts"
 import { messageOf } from "./errors.ts";
 import { canEdit, hasPadProof, padRole, parseEncryption, writeFailure } from "./pad-access.ts";
 import { proxyUsername, USERNAME_PATTERN, validRequestOrigin } from "./proxy-user.ts";
+import type { PadRevision } from "./update-log.ts";
 import type { Config } from "./config.ts";
 
 /** How often Pad creation retries a generated two-word Slug on collision. */
@@ -25,6 +26,9 @@ export interface AppOptions {
   /** Notified when a Pad is deleted early — the relay drops its room. */
   onPadDeleted?: (slug: string) => Promise<void> | void;
   onGrantChanged?: (slug: string, username: string, role: GrantRole | null) => void;
+  notifyAccount?: (username: string) => void;
+  onAttachmentChanged?: (slug: string) => void;
+  padRevision?: (pad: PadRecord) => PadRevision;
   onExpiryChanged?: (slug: string, expiresAt: string | null) => void;
 }
 
@@ -86,10 +90,12 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
 
   // Attachment bytes for any Pad (ticket 03); Pad creation lives at the
   // router's root (/api/pads) and is registered separately below.
-  app.use("/api/pads", attachmentsRouter({ store, config, pins: options.pins }));
+  app.use("/api/pads", attachmentsRouter({ store, config, pins: options.pins, onAttachmentChanged: options.onAttachmentChanged }));
 
   app.get(["/", "/default"], (_req, res) => {
-    const pad = store.ensureDefaultPad(requestUsername(res));
+    const username = requestUsername(res);
+    if (username !== null && _req.method === "GET") store.rememberUser(username);
+    const pad = store.ensureDefaultPad(username);
     res.type("html").send(renderPadPage(pad, {
       ...pageOptions,
       language: res.locals.language,
@@ -183,14 +189,20 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
 
   app.get("/api/my-spaces", (_req, res) => {
     const username = requestUsername(res);
-    const summary = (pad: PadRecord) => ({
-      slug: pad.slug,
-      path: `${config.padPath}/${pad.slug}`,
-      displayName: pad.displayName ?? null,
-      createdAt: pad.createdAt,
-      expiresAt: pad.expiresAt,
-      encrypted: pad.kind === "encrypted",
-    });
+    const summary = (pad: PadRecord) => {
+      const { revision, updatedAt } = options.padRevision?.(pad) ?? { revision: 0, updatedAt: null };
+      const seen = store.seenRevision(pad, username);
+      return {
+        slug: pad.slug,
+        path: `${config.padPath}/${pad.slug}`,
+        displayName: pad.displayName ?? null,
+        createdAt: pad.createdAt,
+        expiresAt: pad.expiresAt,
+        encrypted: pad.kind === "encrypted",
+        updatedAt,
+        changed: seen !== undefined && revision > seen,
+      };
+    };
     const spaces = store.ownedPads(username).map((pad) => ({
       ...summary(pad),
       accessRequestCount: pad.accessRequests?.length ?? 0,
@@ -218,7 +230,10 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
       }
       const slug = req.params.slug as string;
       const pad = isDefaultPad(slug) ? undefined : store.getLivePad(slug);
-      if (pad?.owner && !padRole(pad, username)) store.requestPadAccess(pad, username);
+      if (pad?.owner && !padRole(pad, username)) {
+        store.rememberUser(username);
+        if (store.requestPadAccess(pad, username)) options.notifyAccount?.(pad.owner);
+      }
       // Give the same response for missing, private and already accessible spaces.
       const filesView = req.query.view === "files" ? "&view=files" : "";
       res.redirect(303, `${config.padPath}/${encodeURIComponent(slug)}?access=requested${filesView}`);
@@ -227,13 +242,16 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     app.put("/api/pads/:slug/access-seen", (req, res) => {
       const pad = getPadOrAnswer404(store, req.params.slug as string, res);
       if (!pad) return;
-      store.markPadGrantSeen(pad, requestUsername(res)!, req.body?.unreadId);
+      const username = requestUsername(res)!;
+      store.markPadGrantSeen(pad, username, req.body?.unreadId);
+      options.notifyAccount?.(username);
       res.status(204).end();
     });
 
     const accessState = (pad: PadRecord) => ({
       grants: (pad.grants ?? []).map(({ username, role }) => ({ username, role })),
       requests: pad.accessRequests ?? [],
+      eligibleUsers: store.eligibleUsers(pad),
     });
     const ownerAccess: RequestHandler = (req, res, next) => {
       const pad = getPadOrAnswer404(store, req.params.slug as string, res);
@@ -251,13 +269,21 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     });
     app.put("/api/pads/:slug/access", ownerAccess, (req, res) => {
       const pad: PadRecord = res.locals.ownedPad;
-      const { username, role } = req.body ?? {};
+      const { username, role, createOnly } = req.body ?? {};
       if (typeof username !== "string" || !USERNAME_PATTERN.test(username) || username === pad.owner ||
           (role !== "read" && role !== "edit" && role !== null)) {
         res.status(400).json({ error: "Provide another username and a read, edit or null role" });
         return;
       }
-      if (store.setPadGrant(pad, username, role)) options.onGrantChanged?.(pad.slug, username, role);
+      const alreadyGranted = pad.grants?.some((grant) => grant.username === username);
+      if (role && (alreadyGranted ? createOnly === true : !store.eligibleUsers(pad).includes(username))) {
+        res.status(409).json({ error: "This account is no longer eligible for a direct share." });
+        return;
+      }
+      if (store.setPadGrant(pad, username, role)) {
+        options.onGrantChanged?.(pad.slug, username, role);
+        if (pad.owner) options.notifyAccount?.(pad.owner);
+      }
       res.json(accessState(pad));
     });
     app.put("/api/pads/:slug/access-requests/:id", ownerAccess, (req, res) => {
@@ -273,6 +299,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
         return;
       }
       if (role) options.onGrantChanged?.(pad.slug, request.username, role);
+      if (pad.owner) options.notifyAccount?.(pad.owner);
       res.json(accessState(pad));
     });
   }
@@ -395,6 +422,8 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
 
   // Additional Pads live under the configured path prefix (PAD_PATH).
   const padPage: RequestHandler = (req, res) => {
+    const username = requestUsername(res);
+    if (username !== null && req.method === "GET") store.rememberUser(username);
     const slug = req.params.slug as string;
     const pad = getPadOrAnswer404(store, slug, res, (page) => {
       const filesView = req.query.view === "files" ? "?view=files" : "";

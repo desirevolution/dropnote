@@ -4,7 +4,7 @@ import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer, WebSocket } from "ws";
 import { openUpdateLog, type UpdateLog } from "./update-log.ts";
-import type { GrantRole, PadStore } from "./store.ts";
+import type { GrantRole, PadRecord, PadStore } from "./store.ts";
 import { canEdit, hasPadProof, padRole } from "./pad-access.ts";
 import type { PinAuthority } from "./pin.ts";
 
@@ -20,6 +20,8 @@ export class SyncRelay {
   readonly #logs = new Map<string, UpdateLog>();
   readonly #rooms = new Map<string, Set<WebSocket>>();
   readonly #presence = new Map<WebSocket, string>();
+  readonly #deliveredRevisions = new WeakMap<WebSocket, number>();
+  readonly #accountRooms = new Map<string, Set<WebSocket>>();
   readonly #users = new WeakMap<WebSocket, string>();
   readonly #config: Pick<Config, "trustedProxies" | "baseUrl">;
   readonly #heartbeat: NodeJS.Timeout;
@@ -54,6 +56,20 @@ export class SyncRelay {
         rejectUpgrade(socket, 403, "Authentication through a trusted proxy and a valid origin are required");
         return;
       }
+      if (request.url === "/events" && username !== null) {
+        this.#wss.handleUpgrade(request, socket, head, (client) => {
+          this.#wss.emit("connection", client);
+          const room = this.#accountRooms.get(username) ?? new Set<WebSocket>();
+          this.#accountRooms.set(username, room);
+          room.add(client);
+          client.on("message", () => client.close(1008, "Read-only event stream"));
+          client.once("close", () => {
+            room.delete(client);
+            if (!room.size) this.#accountRooms.delete(username);
+          });
+        });
+        return;
+      }
       const slug = slugOf(request);
       if (!slug) {
         rejectUpgrade(socket, 404, "Unknown sync endpoint");
@@ -79,6 +95,32 @@ export class SyncRelay {
         }
       });
     });
+  }
+
+  notifyAccount(username: string): void {
+    for (const client of this.#accountRooms.get(username) ?? []) {
+      sendControl(client, { type: "access-changed" });
+    }
+  }
+
+  revision(pad: PadRecord) {
+    return this.#logFor(pad.slug).current();
+  }
+
+  attachmentChanged(slug: string): void {
+    try {
+      const { revision } = this.#logFor(slug).append(Buffer.alloc(0));
+      this.#announceRevision(slug, revision);
+    } catch (error) {
+      console.error("Attachment revision could not be stored:", error);
+    }
+  }
+
+  #announceRevision(slug: string, revision: number, writer?: WebSocket): void {
+    for (const client of this.#rooms.get(slug) ?? []) {
+      this.#deliveredRevisions.set(client, revision);
+      sendControl(client, { type: client === writer ? "update-accepted" : "revision", revision });
+    }
   }
 
   accessChanged(slug: string, username: string, role: GrantRole | null): void {
@@ -126,6 +168,23 @@ export class SyncRelay {
         client.close(4004, "Pad unavailable");
         return;
       }
+      if (!isBinary && data instanceof Buffer && data.length < 128) {
+        const seen = /^seen:(\d+)$/.exec(data.toString());
+        if (seen) {
+          const revision = Number(seen[1]);
+          if (Number.isSafeInteger(revision) && revision <= (this.#deliveredRevisions.get(client) ?? -1) &&
+              revision >= 0) {
+            try {
+              this.#store.markRevisionSeen(pad, username, revision);
+              sendControl(client, { type: "seen-accepted", revision });
+            } catch (error) {
+              console.error("Seen revision could not be stored:", error);
+              client.close(1011, "Seen revision could not be stored");
+            }
+          }
+          return;
+        }
+      }
       if (!canEdit(pad, username) || (pad.pin && !this.#pins.checkToken(slug, token, username))) {
         if (isBinary) sendControl(client, { type: "write-rejected" });
         return;
@@ -147,6 +206,7 @@ export class SyncRelay {
         return;
       }
       const update = data as Buffer;
+      if (!update.length) return;
       try {
         log.append(update);
       } catch (error) {
@@ -155,7 +215,8 @@ export class SyncRelay {
         return;
       }
       broadcast(room, client, update);
-      sendControl(client, { type: "update-accepted" });
+      const revision = log.current().revision;
+      this.#announceRevision(slug, revision, client);
     });
     const leave = () => {
       room.delete(client);
@@ -171,7 +232,9 @@ export class SyncRelay {
     }
     sendControl(client, { type: "pad-info", createdAt: pad.createdAt, expiresAt: pad.expiresAt });
     for (const update of log.updates()) client.send(update);
-    sendControl(client, { type: "replay-done", writable: canEdit(pad, username) && (!pad.pin || this.#pins.checkToken(slug, token, username)) });
+    const revision = log.current().revision;
+    this.#deliveredRevisions.set(client, revision);
+    sendControl(client, { type: "replay-done", revision, writable: canEdit(pad, username) && (!pad.pin || this.#pins.checkToken(slug, token, username)) });
     for (const other of room) {
       const presence = this.#presence.get(other);
       if (presence && other.readyState === WebSocket.OPEN) client.send(presence);

@@ -143,6 +143,7 @@ export const PAD_CSS = `
   #space-access-form button { justify-self: start; }
   #space-access-status { margin-block: .65rem; }
   #space-access-status:empty { margin: 0; }
+  .access-toast { position: fixed; z-index: 10; inset-inline-end: 1rem; inset-block-start: 1rem; display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; max-inline-size: calc(100vw - 2rem); padding: .65rem; background: var(--surface); border: 1px solid var(--accent); border-radius: .35rem; box-shadow: 0 .25rem 1rem #0003; }
   .request-count { min-inline-size: 1.4em; padding-inline: .25em; border-radius: 1em; background: var(--accent); color: var(--on-accent); text-align: center; }
   #my-pads-list, .account-list { max-height: 45vh; overflow-y: auto; }
   #my-pads-list li, .account-list li { display: flex; align-items: center; justify-content: space-between; gap: .5rem; border-bottom: 1px solid var(--border); padding: .4rem .25rem; }

@@ -215,6 +215,11 @@ ${PAD_CSS}
     </section>
   </dialog>
 
+  <aside id="access-toast" class="access-toast" hidden>
+    <span id="access-toast-text" role="status"></span>
+    <a id="access-toast-action" href="/"></a>
+    <button id="access-toast-close" type="button" class="icon-button quiet" aria-label="${t("Close")}">${icon("close")}</button>
+  </aside>
   <p id="pad-notice" class="pad-notice" role="status" hidden></p>
   <p id="sync-error" role="alert" hidden></p>
   <div class="workspace" id="workspace"${isEncrypted ? " hidden" : ""}>
@@ -361,6 +366,9 @@ ${PAD_CSS}
       <button type="button" class="icon-button quiet" data-close-dialog aria-label="${t("Close")}">${icon("close")}</button>
     </header>
     ${defaultSpace}
+    <label>${t("Sort spaces")}
+      <select id="space-sort"><option value="created">${t("Recently created")}</option><option value="updated">${t("Recently changed")}</option></select>
+    </label>
     <ul class="account-list" id="owned-spaces-list"></ul>
     <p class="files-empty" id="owned-spaces-status" role="status"></p>
     ${username ? `<section class="shared-spaces" aria-labelledby="shared-spaces-title" hidden>
@@ -379,13 +387,15 @@ ${PAD_CSS}
       <h3 id="space-access-requests-title">${t("Access requests")}</h3>
       <ul class="account-list" id="space-access-request-list"></ul>
     </section>
+    <details><summary>${t("Add person")}</summary>
     <form id="space-access-form">
-      <label>${t("Username")} <input name="username" required maxlength="128" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+      <label>${t("Username")} <select name="username" required><option value="">${t("Choose an account")}</option></select></label>
       <label>${t("Permission")}
         <select name="role"><option value="read">${t("Can read")}</option><option value="edit">${t("Can edit")}</option></select>
       </label>
-      <button type="submit" class="primary" disabled>${t("Save access")}</button>
+      <button type="submit" class="primary" disabled>${t("Grant access")}</button>
     </form>
+    </details>
     <p id="space-access-status" role="status"></p>
     <ul class="account-list" id="space-access-list"></ul>
   </dialog>` : ""}
@@ -505,17 +515,19 @@ const ACCESS_WAIT_SCRIPT = `
     let running = false;
     let timer;
     let nextCheck = 0;
+    let blockedUntil = 0;
 
     function schedule() {
       clearTimeout(timer);
-      if (running || document.hidden) return;
-      timer = setTimeout(checkAccess, Math.max(0, nextCheck - Date.now()));
+      if (running || document.hidden || (connected && nextCheck > Date.now())) return;
+      timer = setTimeout(checkAccess, Math.max(0, Math.max(blockedUntil, nextCheck) - Date.now()));
     }
 
     async function checkAccess() {
       if (running || document.hidden) return;
       running = true;
       let delay = 10_000;
+      nextCheck = Infinity;
       try {
         const response = await fetch(link.dataset.checkPath, {
           method: "HEAD",
@@ -529,17 +541,45 @@ const ACCESS_WAIT_SCRIPT = `
         }
         if (response.status === 429) {
           const seconds = Number(response.headers.get("retry-after"));
-          if (Number.isFinite(seconds)) delay = Math.max(delay, seconds * 1_000);
+          if (Number.isFinite(seconds)) blockedUntil = Date.now() + Math.max(delay, seconds * 1_000);
         }
       } catch {
         // The manual link remains available while the network or session recovers.
       }
-      nextCheck = Date.now() + delay;
+      if (nextCheck !== 0) nextCheck = Date.now() + delay;
       running = false;
       schedule();
     }
 
-    document.addEventListener("visibilitychange", schedule);
+    let socket;
+    let retry;
+    let connected = false;
+    function connect() {
+      if (socket || document.hidden) return;
+      const url = new URL("/events", location.href);
+      url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+      socket = new WebSocket(url, "dropnote");
+      socket.onopen = () => { connected = true; wake(); };
+      socket.onmessage = wake;
+      socket.onclose = () => {
+        socket = null;
+        connected = false;
+        wake();
+        retry = setTimeout(connect, 5000);
+      };
+    }
+    function wake() {
+      nextCheck = 0;
+      schedule();
+    }
+    document.addEventListener("visibilitychange", () => { connect(); wake(); });
+    window.addEventListener("pagehide", () => {
+      clearTimeout(retry);
+      clearTimeout(timer);
+      if (socket) { socket.onclose = null; socket.close(); socket = null; connected = false; }
+    });
+    window.addEventListener("pageshow", () => { connect(); wake(); });
+    connect();
     schedule();
   })();
 `;

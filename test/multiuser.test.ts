@@ -34,7 +34,7 @@ async function setup(t: TestContext, overrides: NodeJS.ProcessEnv = {}) {
   function socket(space: string, username?: string, options: { token?: string; proof?: string; origin?: string } = {}) {
     const headers = { ...(username ? { "x-forwarded-user": username } : {}), origin: options.origin ?? origin };
     const protocols = options.proof ? ["dropnote", `proof.${options.proof}`] : ["dropnote"];
-    const url = `${base.replace("http:", "ws:")}/sync/${space}${options.token ? `?token=${options.token}` : ""}`;
+    const url = `${base.replace("http:", "ws:")}${space === "/events" ? space : `/sync/${space}`}${options.token ? `?token=${options.token}` : ""}`;
     const ws = new WebSocket(url, protocols, { headers, handshakeTimeout: 3_000 });
     t.after(() => ws.terminate());
     return ws;
@@ -97,7 +97,7 @@ test("private spaces have owner-only management and revocable read and edit role
   const ownerBody = await ownerPage.text();
   assert.match(ownerBody, /data-open-dialog="owned-spaces-dialog"[^>]*>[^<]*<span id="access-request-badge"/);
   assert.match(ownerBody, /Manage access/);
-  assert.match(ownerBody, /<button type="submit" class="primary" disabled>Save access<\/button>/);
+  assert.match(ownerBody, /<button type="submit" class="primary" disabled>Grant access<\/button>/);
   assert.doesNotMatch(ownerBody, /id="remember-pad"/);
   const bytes = Buffer.from("private file");
   const uploaded = await request(`${api}/attachments`, owner, { method: "POST", body: bytes });
@@ -113,6 +113,7 @@ test("private spaces have owner-only management and revocable read and edit role
   assert.deepEqual(await list(collaborator), []);
   assert.equal((await json("/api/pads/default/access", owner, "PUT", { username: collaborator, role: "read" })).status, 403);
 
+  await request("/default", collaborator);
   const grant = (role: "read" | "edit" | null) => json(`${api}/access`, owner, "PUT", { username: collaborator, role });
   assert.equal((await grant("read")).status, 200);
   assert.equal((await request(api, "Bob")).status, 404);
@@ -181,6 +182,7 @@ test("multiuser grants layer with encryption proof and account-bound editing PIN
   };
   assert.equal((await json("/api/pads", owner, "POST", { slug, encrypted: true, encryption, pin: "1234" })).status, 201);
   await rejected(socket(slug, collaborator, { proof }), 404);
+  await request("/default", collaborator);
   assert.equal((await json(`${api}/access`, owner, "PUT", { username: collaborator, role: "edit" })).status, 200);
   await rejected(socket(slug, collaborator), 403);
   assert.equal((await control(socket(slug, collaborator, { proof }), "replay-done")).writable, false);
@@ -283,20 +285,23 @@ test("signed-in visitors can request access privately and the owner can grant or
   assert.equal((await json(decision, collaborator, "PUT", { role: "edit" })).status, 404);
   assert.equal((await json(decision, owner, "PUT", { role: "admin" })).status, 400);
   const declined = await json(decision, owner, "PUT", { role: null });
-  assert.deepEqual(await declined.json(), { grants: [], requests: [] });
+  assert.deepEqual(await declined.json(), { grants: [], requests: [], eligibleUsers: [collaborator] });
   assert.equal((await request(pagePath, collaborator)).status, 404);
   assert.equal((await submit(requestsPath, collaborator)).status, 303);
   assert.equal((await json(decision, owner, "PUT", { role: "edit" })).status, 404);
 
   const renewed = await (await request(`${api}/access`, owner)).json();
   const approved = await json(`${requestsPath}/${renewed.requests[0].id}`, owner, "PUT", { role: "read" });
-  assert.deepEqual(await approved.json(), { grants: [{ username: collaborator, role: "read" }], requests: [] });
+  assert.deepEqual(await approved.json(), { grants: [{ username: collaborator, role: "read" }], requests: [], eligibleUsers: [] });
   assert.equal((await request(api, collaborator, { method: "HEAD" })).status, 200);
   assert.equal((await request(api, "charlie", { method: "HEAD" })).status, 404);
   assert.equal((await request(pagePath, collaborator)).status, 200);
   assert.equal((await control(socket(slug, collaborator), "replay-done")).writable, false);
 
   assert.equal((await submit(requestsPath, "charlie")).status, 303);
+  assert.equal((await json(`${api}/access`, owner, "PUT", { username: "charlie", role: "edit" })).status, 409);
+  const pending = await (await request(`${api}/access`, owner)).json();
+  await json(`${requestsPath}/${pending.requests[0].id}`, owner, "PUT", { role: null });
   const manualGrant = await json(`${api}/access`, owner, "PUT", { username: "charlie", role: "edit" });
   assert.deepEqual((await manualGrant.json()).requests, []);
   assert.equal((await control(socket(slug, "charlie"), "replay-done")).writable, true);
@@ -325,6 +330,7 @@ test("an owner can rename a space without changing its address or access grants"
   const create = await json("/api/pads", owner, "POST", { slug });
   assert.equal(create.status, 201);
   const original = await create.json();
+  await request("/default", collaborator);
   assert.equal((await json(`${api}/access`, owner, "PUT", { username: collaborator, role: "edit" })).status, 200);
   assert.equal((await json(api, collaborator, "PATCH", { displayName: "Other name" })).status, 403);
   assert.equal((await json(api, "charlie", "PATCH", { displayName: "Other name" })).status, 404);
@@ -427,4 +433,66 @@ test("new shares are discoverable per account until opened and acknowledged", as
   await grant("edit");
   await ack(collaborator, unreadId);
   assert.equal((await shared(collaborator))[0].isNew, true);
+});
+
+test("account events notify only the parties to a request or share", async (t) => {
+  const { request, json, socket } = await setup(t);
+  await rejected(socket("/events"), 403);
+  await rejected(socket("/events", owner, { origin: "https://elsewhere.test" }), 403);
+  await json("/api/pads", owner, "POST", { slug });
+  const access = `${api}/access`;
+  assert.equal((await json(access, owner, "PUT", { username: "unknown", role: "read" })).status, 409);
+  await request("/default", "charlie");
+  assert.deepEqual((await (await request(access, owner)).json()).eligibleUsers, ["charlie"]);
+  const ownerEvents = socket("/events", owner);
+  const recipientEvents = socket("/events", collaborator);
+  const directEvents = socket("/events", "charlie");
+  await Promise.all([ownerEvents, recipientEvents, directEvents].map((ws) => once(ws, "open")));
+  const notices: string[] = [];
+  directEvents.on("message", (message) => notices.push(message.toString()));
+  const incoming = control(ownerEvents, "access-changed");
+  await request(`${api}/access-requests`, collaborator, { method: "POST", redirect: "manual" });
+  assert.deepEqual(await incoming, { type: "access-changed" });
+  const { requests, eligibleUsers } = await (await request(access, owner)).json();
+  assert.deepEqual(eligibleUsers, ["charlie"]);
+  const approved = control(recipientEvents, "access-changed");
+  await json(`${api}/access-requests/${requests[0].id}`, owner, "PUT", { role: "read" });
+  assert.deepEqual(await approved, { type: "access-changed" });
+  assert.deepEqual(notices, []);
+  const direct = control(directEvents, "access-changed");
+  await json(access, owner, "PUT", { username: "charlie", role: "edit" });
+  assert.deepEqual(await direct, { type: "access-changed" });
+  assert.deepEqual((await (await request(access, owner)).json()).eligibleUsers, []);
+  assert.equal((await json(access, owner, "PUT", { username: "charlie", role: "read", createOnly: true })).status, 409);
+});
+
+test("seen revisions are account-scoped, monotonic and bounded by socket delivery", async (t) => {
+  const { request, json, socket } = await setup(t);
+  await json("/api/pads", owner, "POST", { slug });
+  await request("/default", collaborator);
+  await json(`${api}/access`, owner, "PUT", { username: collaborator, role: "read" });
+  const reader = socket(slug, collaborator);
+  const writer = socket(slug, owner);
+  await Promise.all([control(reader, "replay-done"), control(writer, "replay-done")]);
+  const seen = async (revision: number) => {
+    const accepted = control(reader, "seen-accepted");
+    reader.send(`seen:${revision}`);
+    assert.equal((await accepted).revision, revision);
+  };
+  const shared = async () => (await (await request("/api/my-spaces", collaborator)).json()).sharedSpaces[0];
+  reader.send("seen:9999");
+  await seen(0);
+  const revision = control(reader, "revision");
+  writer.send(Buffer.from([7, 8]));
+  assert.equal((await revision).revision, 1);
+  assert.equal((await shared()).changed, true);
+  assert.ok((await shared()).updatedAt);
+  await seen(1);
+  await seen(0);
+  assert.equal((await shared()).changed, false);
+  const fileRevision = control(reader, "revision");
+  const uploaded = await request(`${api}/attachments`, owner, { method: "POST", body: Buffer.from("file") });
+  assert.equal(uploaded.status, 201);
+  assert.equal((await fileRevision).revision, 2);
+  assert.equal((await shared()).changed, true);
 });

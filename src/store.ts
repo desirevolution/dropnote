@@ -42,6 +42,7 @@ export interface PadAccessRequest {
 }
 
 export interface PadRecord {
+  seenRevisions?: Record<string, number>;
   owner?: string;
   grants?: PadGrant[];
   accessRequests?: PadAccessRequest[];
@@ -71,6 +72,7 @@ export interface PadRecord {
 
 export interface PadIndex {
   multiuser?: boolean;
+  knownUsers?: string[];
   version: 1;
   /** Maps Slug → Pad. */
   pads: Record<string, PadRecord>;
@@ -155,6 +157,41 @@ export class PadStore {
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
 
+  rememberUser(username: string): void {
+    const previous = this.#index.knownUsers ?? [];
+    if (previous.includes(username)) return;
+    this.#index.knownUsers = [...previous, username];
+    try { this.#save(); }
+    catch (error) {
+      this.#index.knownUsers = previous;
+      throw error;
+    }
+  }
+
+  eligibleUsers(pad: PadRecord): string[] {
+    const excluded = new Set([pad.owner, ...(pad.grants ?? []).map((grant) => grant.username),
+      ...(pad.accessRequests ?? []).map((request) => request.username)]);
+    return (this.#index.knownUsers ?? []).filter((name) => !excluded.has(name)).sort();
+  }
+
+  seenRevision(pad: PadRecord, username: string | null): number | undefined {
+    const key = ":" + (username ?? "");
+    return pad.seenRevisions?.[key];
+  }
+
+  markRevisionSeen(pad: PadRecord, username: string | null, revision: number): boolean {
+    const previous = pad.seenRevisions;
+    if ((this.seenRevision(pad, username) ?? -1) >= revision) return false;
+    const key = ":" + (username ?? "");
+    pad.seenRevisions = { ...previous, [key]: revision };
+    try { this.#save(); }
+    catch (error) {
+      pad.seenRevisions = previous;
+      throw error;
+    }
+    return true;
+  }
+
   sharedPads(username: string) {
     return Object.values(this.#index.pads).flatMap((pad) => {
       if (isDefaultPad(pad.slug) || !pad.owner || pad.owner === username || !this.getLivePad(pad.slug)) return [];
@@ -196,10 +233,11 @@ export class PadStore {
     return true;
   }
 
-  requestPadAccess(pad: PadRecord, username: string): void {
+  requestPadAccess(pad: PadRecord, username: string): boolean {
     const requests = pad.accessRequests ?? [];
-    if (requests.some((request) => request.username === username)) return;
+    if (requests.some((request) => request.username === username)) return false;
     this.#saveAccessRequests(pad, [...requests, { id: randomUUID(), username }]);
+    return true;
   }
 
   resolvePadAccessRequest(pad: PadRecord, id: string, role: GrantRole | null): PadAccessRequest | undefined {
