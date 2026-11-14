@@ -13,6 +13,7 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
   if (!dialog) return;
   const open = document.querySelector('[data-open-dialog="guest-link-dialog"]');
   const form = $("form");
+  const close = dialog.querySelector("[data-close-dialog]");
   const state = $("state");
   const feedback = $("feedback");
   const create = $("create");
@@ -20,7 +21,6 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
   const durationOptions = [...duration.options];
   const password = $("password");
   const suggest = $("suggest");
-  const copyPassword = $("copy-password");
   const durationMs = { "1h": 3_600_000, "24h": 86_400_000, "7d": 604_800_000 };
   let availability;
   let deadlineTimer;
@@ -32,10 +32,13 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
     suggestPassword();
     password.focus();
   });
-  copyPassword?.addEventListener("click", () => {
-    if (password.value) void copyText(password.value, feedback, t("Password copied."));
-  });
   const revoke = $("revoke");
+  const replace = $("replace");
+  const confirmRevoke = $("confirm-revoke");
+  const cancelRevoke = $("cancel-revoke");
+  const cancelReplace = $("cancel-replace");
+  const once = $("once");
+  let view = "manage";
   const include = $("include");
   const field = $("secret");
   const url = $("url");
@@ -70,10 +73,12 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
     const locked = Boolean(encryption && !getProof());
     const loading = Boolean(encryption && !locked && !getDocument());
     const allowed = Boolean(duration.value);
-    if (password) password.disabled = suggest.disabled = copyPassword.disabled = !allowed || busy;
+    if (password) password.disabled = suggest.disabled = !allowed || busy;
     duration.disabled = !allowed || busy;
     create.disabled = !ready || busy || locked || loading || !allowed;
-    revoke.disabled = busy;
+    replace.disabled = revoke.disabled = confirmRevoke.disabled = cancelRevoke.disabled = cancelReplace.disabled = busy;
+    once.disabled = !allowed || busy;
+    close.disabled = busy;
     $("lock-hint").hidden = !locked;
     $("sync-hint").hidden = !loading;
     $("ttl-hint").hidden = !availability || allowed;
@@ -94,33 +99,46 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
   function clearQr() {
     version++;
     canvas.hidden = true;
+    qr.setAttribute("aria-expanded", "false");
+    qr.textContent = t("Show QR code");
     canvas.width = 0;
     url.value = link?.url ?? "";
   }
 
   function render() {
-    createdPassword = undefined;
-    if (copyActivePassword) copyActivePassword.hidden = true;
-    $("active").hidden = !link;
+    $("description").hidden = view === "confirm";
+    $("active").hidden = view !== "manage" || !link;
     $("share").hidden = Boolean(link?.redeemedAt);
+    $("confirm").hidden = view !== "confirm";
+    form.hidden = !ready || (view !== "replace" && (view !== "manage" || Boolean(link)));
     state.textContent = link ? t(link.redeemedAt ? "Redeemed · Access until {date}" :
       link.oneTime ? "One-time link · Access until {date}" : "Access until {date}", { date: dateLabel(link.expiresAt) }) :
-      t("No active guest link.");
-    $("replace-hint").hidden = !link;
-    $("captured").hidden = !link?.capturedAt;
+      ready ? t("No active guest link.") : busy ? t("Loading…") : "";
+    $("replace-hint").hidden = cancelReplace.hidden = view !== "replace";
+    $("captured").hidden = !link?.capturedAt || view === "confirm";
     $("captured").textContent = link?.capturedAt ? t("Snapshot from {date}", { date: dateLabel(link.capturedAt) }) : "";
-    create.textContent = t(link ? "Replace guest link" : "Create guest link");
-    include.checked = false;
-    field.value = "";
-    updateSecretControl();
+    create.textContent = t(view === "replace" ? "Replace guest link" : "Create guest link");
+    if (copyActivePassword) copyActivePassword.hidden = !createdPassword;
     refreshControls();
   }
 
+  function resetSharing() {
+    include.checked = false;
+    updateSecretControl();
+  }
+
+  function resetDraft() {
+    duration.value = "24h";
+    once.checked = false;
+    suggestPassword();
+  }
+
   function updateSecretControl() {
-    $("secret-label").hidden = $("warning").hidden = !include.checked;
+    $("secret-label").hidden = !include.checked || Boolean(createdPassword);
+    $("warning").hidden = !include.checked;
     url.hidden = include.checked;
     url.previousElementSibling.hidden = include.checked;
-    field.value = include.checked ? createdPassword ?? "" : "";
+    field.value = "";
     if (include.checked && createdPassword) {
       clearTimeout(validationTimer);
       clearQr();
@@ -165,6 +183,7 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
     const response = await fetch(`${api}/guest-link`, {
       method,
       cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
       ...(body ? { body: JSON.stringify(body), headers: { "Content-Type": "application/json", ...(proof ? { "X-Pad-Proof": proof } : {}) } } : {}),
     });
     if (response.ok && method === "DELETE") return null;
@@ -186,6 +205,7 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
       ready = true;
       setAvailability(data);
       link = data.link;
+      if (!link && !password?.value) resetDraft();
       render();
     } catch (error) {
       ready = false;
@@ -207,7 +227,14 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
       ready = true;
       setAvailability(current);
       if (JSON.stringify(current.link) === JSON.stringify(link)) return;
+      const previous = link;
       link = current.link;
+      if (link?.url !== previous?.url) {
+        view = "manage";
+        createdPassword = undefined;
+        resetSharing();
+        if (!link) resetDraft();
+      } else if (link?.redeemedAt) resetSharing();
       render();
     } catch {
       // Keep the last successful state until the next check.
@@ -215,7 +242,12 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
   }
 
   open.addEventListener("click", () => {
-    if (password && !password.value) suggestPassword();
+    if (!busy) {
+      view = "manage";
+      link = null;
+      ready = false;
+      state.textContent = t("Loading…");
+    }
     clearInterval(statusTimer);
     statusTimer = setInterval(checkStatus, 5_000);
     void refresh();
@@ -234,10 +266,48 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
     if (password) password.value = "";
     createdPassword = undefined;
     if (copyActivePassword) copyActivePassword.hidden = true;
-    include.checked = false;
-    updateSecretControl();
+    resetSharing();
+    view = "manage";
+    link = null;
+    ready = false;
+    render();
   });
-  include.addEventListener("change", updateSecretControl);
+  include.addEventListener("change", () => {
+    updateSecretControl();
+    if (!$("secret-label").hidden) field.focus();
+  });
+  replace.addEventListener("click", () => {
+    view = "replace";
+    resetSharing();
+    resetDraft();
+    render();
+    (duration.disabled ? cancelReplace : duration).focus();
+  });
+  cancelReplace.addEventListener("click", () => {
+    view = "manage";
+    if (password) password.value = "";
+    render();
+    replace.focus();
+  });
+  revoke.addEventListener("click", () => {
+    if (busy || !link) return;
+    view = "confirm";
+    resetSharing();
+    render();
+    cancelRevoke.focus();
+  });
+  cancelRevoke.addEventListener("click", () => {
+    view = "manage";
+    render();
+    revoke.focus();
+  });
+  dialog.addEventListener("cancel", (event) => {
+    if (view === "manage" && !busy) return;
+    event.preventDefault();
+    if (busy) return;
+    if (view === "confirm") cancelRevoke.click();
+    else cancelReplace.click();
+  });
   field.addEventListener("input", validateSecret);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -245,7 +315,7 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
     const proof = getProof();
     refreshControls();
     if (create.disabled) return;
-    const choices = { duration: duration.value, oneTime: $("once").checked };
+    const choices = { duration: duration.value, oneTime: once.checked };
     const chosenPassword = password?.value;
     mutation++;
     busy = true;
@@ -255,21 +325,24 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
       if (encryption) {
         const doc = getDocument();
         const [proofHash, snapshot] = await Promise.all([guestProofHash(key), sealGuestSnapshot(key, doc)]);
-        if (getKey() !== key || getDocument() !== doc) return;
+        if (getKey() !== key || getDocument() !== doc) {
+          feedback.textContent = t("Wait for the space to finish syncing before creating a snapshot.");
+          return;
+        }
         choices.proofHash = proofHash;
         choices.snapshot = snapshot;
       } else choices.password = chosenPassword;
       const data = await request("PUT", choices, proof);
       setAvailability(data);
+      const replaced = view === "replace";
       link = data.link;
+      view = "manage";
+      createdPassword = dialog.open ? chosenPassword : undefined;
+      if (password) password.value = "";
+      resetSharing();
       render();
-      if (password && dialog.open) {
-        include.checked = false;
-        // Keep the creation password available for copying while this dialog is open.
-        createdPassword = chosenPassword;
-        copyActivePassword.hidden = false;
-        suggestPassword();
-      }
+      if (dialog.open) copy.focus();
+      feedback.textContent = t(replaced ? "Guest link replaced." : "Guest link created.");
     } catch (error) {
       feedback.textContent = t(error.message);
     } finally {
@@ -277,16 +350,23 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
       refreshControls();
     }
   });
-  revoke.addEventListener("click", async () => {
-    if (busy || !link) return;
+  confirmRevoke.addEventListener("click", async () => {
+    if (busy || !link || view !== "confirm") return;
     mutation++;
     busy = true;
     feedback.textContent = "";
     refreshControls();
     try {
       link = await request("DELETE");
+      view = "manage";
+      createdPassword = undefined;
+      resetSharing();
+      resetDraft();
       render();
-      create.focus();
+      feedback.textContent = t("Guest link deactivated.");
+      busy = false;
+      refreshControls();
+      (duration.disabled ? close : duration).focus();
     } catch (error) {
       feedback.textContent = t(error.message);
     } finally {
@@ -302,12 +382,18 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
     const address = verifiedPassphrase ? secretLink(link.url, verifiedPassphrase) : link.url;
     try {
       if (drawQr) {
+        if (!canvas.hidden) {
+          clearQr();
+          return;
+        }
         const image = await QRCode.toCanvas(address, { width: 440, margin: 4 });
         if (current !== version || !dialog.open) return;
         canvas.width = image.width;
         canvas.height = image.height;
         canvas.getContext("2d").drawImage(image, 0, 0);
         canvas.hidden = false;
+        qr.setAttribute("aria-expanded", "true");
+        qr.textContent = t("Hide QR code");
         feedback.textContent = "";
       } else {
         await copyText(address, feedback, t("Link copied."));

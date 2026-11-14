@@ -305,7 +305,19 @@ const german: Record<string, string> = {
   "Snapshot from {date}": "Schnappschuss vom {date}",
   "A valid encrypted snapshot is required.": "Für diesen Gastlink ist ein gültiger verschlüsselter Schnappschuss erforderlich.",
   "Files deleted from the space also disappear from guest access.": "Wenn du Dateien aus der Ablage löschst, können Gäste sie ebenfalls nicht mehr herunterladen.",
-  "The encrypted snapshot is too large.": "Der verschlüsselte Schnappschuss ist zu groß."
+  "The encrypted snapshot is too large.": "Der verschlüsselte Schnappschuss ist zu groß.",
+  "Include passphrase in link and QR code": "Passphrase in Link und QR-Code aufnehmen",
+  "Include password in link and QR code": "Passwort in Link und QR-Code aufnehmen",
+  "Passphrase for this space": "Passphrase dieser Ablage",
+  "Password for this guest link": "Passwort für diesen Gastlink",
+  "Password for the new guest link": "Passwort für den neuen Gastlink",
+  "Deactivate guest link": "Gastlink deaktivieren",
+  "Deactivate guest link?": "Gastlink deaktivieren?",
+  "The shared link will stop working. Guests will no longer be able to open the space or start downloads.": "Der geteilte Link wird ungültig. Gäste können die Ablage nicht mehr öffnen oder neue Downloads starten.",
+  "Guest link deactivated.": "Gastlink deaktiviert.",
+  "Hide QR code": "QR-Code ausblenden",
+  "Guest link created.": "Gastlink erstellt.",
+  "Guest link replaced.": "Gastlink ersetzt."
 };
 
 export function translate(language: Language, message: string, values?: Record<string, string | number>): string {

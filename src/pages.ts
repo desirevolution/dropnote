@@ -422,50 +422,61 @@ ${PAD_CSS}
 
   ${canShareWithGuests ? `<dialog id="guest-link-dialog" aria-labelledby="guest-link-title">
     <header class="dialog-head">
-      <h2 id="guest-link-title">${t("Guest link")}</h2>
+      <h2 id="guest-link-title">${t("Manage guest link")}</h2>
       <button type="button" class="icon-button quiet" data-close-dialog aria-label="${t("Close")}">${icon("close")}</button>
     </header>
-    <p>${t(isEncrypted ? "Share an encrypted snapshot. Later changes are visible only after you replace the guest link." : "Guests see the current state each time they open this link. A guest password is required.")}</p>
+    <p id="guest-link-description">${t(isEncrypted ? "Share an encrypted snapshot. Later changes are visible only after you replace the guest link." : "Guests see the current state each time they open this link. A guest password is required.")}</p>
     ${isEncrypted ? `<p>${t("Files deleted from the space also disappear from guest access.")}</p>` : ""}
-    <p id="guest-link-state" role="status"></p>
+    <p id="guest-link-state" role="status">${t("Loading…")}</p>
     <p id="guest-link-captured" hidden></p>
     <section id="guest-link-active" hidden>
       <div id="guest-link-share">
         <label for="guest-link-url">${t("Guest link")}</label>
         <input type="url" id="guest-link-url" readonly>
-        <label class="checkbox-field"><input type="checkbox" id="guest-link-include"> ${t(isEncrypted ? "Include passphrase" : "Include guest password")}</label>
-        <label id="guest-link-secret-label" hidden>${t(isEncrypted ? "Passphrase" : "Guest password")}
+        <label class="checkbox-field"><input type="checkbox" id="guest-link-include"> ${t(isEncrypted ? "Include passphrase in link and QR code" : "Include password in link and QR code")}</label>
+        <label id="guest-link-secret-label" hidden>${t(isEncrypted ? "Passphrase for this space" : "Password for this guest link")}
           <input type="password" id="guest-link-secret" autocomplete="off">
         </label>
         <p id="guest-link-warning" hidden>${t("Anyone with this link and its password can open the space while the link is valid.")}</p>
         <div class="dialog-actions">
           <button type="button" id="guest-link-copy">${t("Copy link")}</button>
-          <button type="button" id="guest-link-show-qr">${t("Show QR code")}</button>
+          <button type="button" id="guest-link-show-qr" aria-controls="guest-link-qr" aria-expanded="false">${t("Show QR code")}</button>
           ${isEncrypted ? "" : `<button type="button" id="guest-link-copy-active-password" hidden>${t("Copy password")}</button>`}
         </div>
         <canvas id="guest-link-qr" aria-label="${t("QR code for this space")}" role="img" hidden></canvas>
       </div>
-      <button type="button" class="danger" id="guest-link-revoke">${t("Revoke guest link")}</button>
+      <div class="dialog-actions guest-link-management">
+        <button type="button" id="guest-link-replace">${t("Replace guest link")}</button>
+        <button type="button" class="danger" id="guest-link-revoke">${t("Deactivate guest link")}</button>
+      </div>
     </section>
-    <form id="guest-link-form">
+    <section id="guest-link-confirm" aria-labelledby="guest-link-confirm-title" hidden>
+      <h3 id="guest-link-confirm-title">${t("Deactivate guest link?")}</h3>
+      <p>${t("The shared link will stop working. Guests will no longer be able to open the space or start downloads.")}</p>
+      <div class="dialog-actions">
+        <button type="button" id="guest-link-cancel-revoke">${t("Cancel")}</button>
+        <button type="button" class="danger" id="guest-link-confirm-revoke">${t("Deactivate guest link")}</button>
+      </div>
+    </section>
+    <form id="guest-link-form" hidden>
+      <p id="guest-link-replace-hint" hidden>${t("Replacing this link also ends any active guest session.")}</p>
       <label for="guest-link-duration">${t("Guest link duration")}</label>
       <select id="guest-link-duration">
         <option value="1h">${t("1 hour")}</option>
         <option value="24h" selected>${t("24 hours")}</option>
         <option value="7d">${t("7 days")}</option>
       </select>
-      <p id="guest-link-ttl-hint" hidden>${t("This space expires in less than one hour. Extend its lifetime to create a guest link.")}</p>
-      ${isEncrypted ? "" : `<label for="guest-link-password">${t("Guest password")}</label>
-      <input type="text" id="guest-link-password" required minlength="12" maxlength="256" autocomplete="off" autocapitalize="off" spellcheck="false">
-      <div class="dialog-actions">
-        <button type="button" id="guest-link-suggest">${t("Suggest password")}</button>
-        <button type="button" id="guest-link-copy-password">${t("Copy password")}</button>
-      </div>`}
       <label class="checkbox-field"><input type="checkbox" id="guest-link-once"> ${t("One-time link")}</label>
+      <p id="guest-link-ttl-hint" hidden>${t("This space expires in less than one hour. Extend its lifetime to create a guest link.")}</p>
+      ${isEncrypted ? "" : `<label for="guest-link-password">${t("Password for the new guest link")}</label>
+      <input type="text" id="guest-link-password" required minlength="12" maxlength="256" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button type="button" id="guest-link-suggest">${t("Suggest password")}</button>`}
       <p id="guest-link-sync-hint" hidden>${t("Wait for the space to finish syncing before creating a snapshot.")}</p>
       <p id="guest-link-lock-hint" hidden>${t("Unlock the encrypted space to create a guest link.")}</p>
-      <p id="guest-link-replace-hint" hidden>${t("Replacing this link also ends any active guest session.")}</p>
-      <div class="dialog-actions"><button type="submit" id="guest-link-create" disabled>${t("Create guest link")}</button></div>
+      <div class="dialog-actions">
+        <button type="button" id="guest-link-cancel-replace" hidden>${t("Cancel")}</button>
+        <button type="submit" class="primary" id="guest-link-create" disabled>${t("Create guest link")}</button>
+      </div>
     </form>
     <p id="guest-link-feedback" role="status"></p>
   </dialog>` : ""}
