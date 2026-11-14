@@ -29,7 +29,7 @@
     "@types/ws": "^8.18.2",
     "esbuild": "^0.28.2",
     "qrcode": "^1.5.4",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "y-codemirror.next": "^0.3.6"
   }
 }
