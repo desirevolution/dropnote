@@ -153,7 +153,7 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
 
   const notePanel = editor.dom.closest(".note-card");
   function focusBelowText(event) {
-    if (!writable || event.defaultPrevented || event.button !== 0 || event.detail === 0 ||
+    if (!writable || event.defaultPrevented || event.button !== 0 ||
         event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
     const target = event.target;
     if (target.closest(".cm-line, .cm-gutters, button, a, input")) return;
@@ -167,9 +167,22 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
     }
 
     const lastLine = editor.lineBlockAt(editor.state.doc.length);
-    if (event.clientY >= editor.documentTop + lastLine.bottom) focusEnd();
+    if (event.clientY < editor.documentTop + lastLine.bottom) return;
+    event.preventDefault();
+    const selection = editor.state.selection.main;
+    if (!editor.hasFocus || !selection.empty || selection.head !== editor.state.doc.length) focusEnd();
   }
-  notePanel.addEventListener("click", focusBelowText);
+
+  // Handle mouse focus before the browser can move it off the editor.
+  function onNotePointerDown(event) {
+    if (event.isPrimary && event.pointerType === "mouse") focusBelowText(event);
+  }
+  // Touch and pen still focus on tap, so scrolling gestures remain native.
+  function onNoteClick(event) {
+    if (event.detail > 0 && event.pointerType !== "mouse") focusBelowText(event);
+  }
+  notePanel.addEventListener("pointerdown", onNotePointerDown, true);
+  notePanel.addEventListener("click", onNoteClick);
 
   function queueCursor() {
     if (timer) return;
@@ -283,7 +296,8 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
       visualViewport?.removeEventListener("scroll", queueViewportUpdate);
       document.removeEventListener("visibilitychange", queueCursor);
       window.removeEventListener("blur", queueCursor);
-      notePanel.removeEventListener("click", focusBelowText);
+      notePanel.removeEventListener("pointerdown", onNotePointerDown, true);
+      notePanel.removeEventListener("click", onNoteClick);
       editor.destroy();
       for (const event of historyEvents) undoManager.off(event, updateHistory);
       undoManager.destroy();
