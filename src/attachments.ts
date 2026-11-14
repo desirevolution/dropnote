@@ -14,10 +14,11 @@
 import { createReadStream, createWriteStream, mkdirSync, unlink, renameSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { Router, type Request, type Response } from "express";
-import { BLOB_ID_PATTERN, type PadStore } from "./store.ts";
+import { BLOB_ID_PATTERN, type PadRecord, type PadStore } from "./store.ts";
 import type { Config } from "./config.ts";
 import type { PinAuthority } from "./pin.ts";
 import { hasPadProof, writeFailure } from "./pad-access.ts";
+import { headerText, type scriptIngest } from "./script-ingest.ts";
 import { getPadOrAnswer404, requestUsername, type NoPadAnswer } from "./pad-request.ts";
 
 /** The Attachment endpoints' answer for a Slug or blob that does not exist. */
@@ -29,6 +30,7 @@ export interface AttachmentDeps {
   store: PadStore;
   config: Config;
   pins: PinAuthority;
+  scripts?: ReturnType<typeof scriptIngest>;
   onAttachmentChanged?: (slug: string) => void;
 }
 
@@ -47,12 +49,24 @@ export class AttachmentLimitViolation extends Error {
   }
 }
 
-export function attachmentsRouter({ store, config, pins, onAttachmentChanged }: AttachmentDeps): Router {
+export function attachmentsRouter({ store, config, pins, onAttachmentChanged, scripts }: AttachmentDeps): Router {
   const router = Router();
   const activeUploads = new Set<string>();
 
   // Upload: a streamed body of raw bytes becomes one blob of the Pad.
   router.post("/:slug/attachments", upload);
+  if (scripts) router.post("/:slug/script/files", async (req, res) => {
+    const filename = req.get("X-Filename");
+    if (!filename || !filename.trim() || filename.length > 255 || /[\/\\\x00-\x1f\x7f]/.test(filename)) {
+      res.status(400).json({ error: "Send a filename of up to 255 bytes in X-Filename, without a directory" });
+      return;
+    }
+    const declared = contentLengthOf(req);
+    const tooBig = declared === null ? null : limitViolated(declared);
+    if (tooBig) return reject(req, res, tooBig);
+    const pad = await scripts.target(req, res);
+    if (pad && !req.destroyed) writeUpload(req, res, pad, sanitizeFilename(headerText(filename)));
+  });
   // Download: the original bytes exactly as they were uploaded.
   router.get("/:slug/attachments/:blobId", download);
   // Deletion: removes the blob server-side; the deleting client removes the
@@ -64,7 +78,6 @@ export function attachmentsRouter({ store, config, pins, onAttachmentChanged }: 
   function upload(req: Request, res: Response): void {
     const pad = getPadOrAnswer404(store, req.params.slug as string, res);
     if (!pad) return;
-    const { slug } = pad;
     // On a PIN-protected Pad, attaching is editing — it needs the capability
     // (a Reader only ever downloads). Answered before any byte is read.
     const failure = writeFailure(pad, pins, req.headers, requestUsername(res));
@@ -73,11 +86,16 @@ export function attachmentsRouter({ store, config, pins, onAttachmentChanged }: 
       return;
     }
 
+    writeUpload(req, res, pad);
+  }
+
+  function writeUpload(req: Request, res: Response, pad: PadRecord, scriptName?: string): void {
+    const { slug } = pad;
     // The body is stored exactly as it arrives, on Plain and Encrypted Pads
     // alike: on an Encrypted Pad the client seals it chunk-wise before any
     // byte is sent (ADR-0001), so the server relays a container it cannot
     // read — Zero-Knowledge means it never inspects the bytes to tell.
-    const requestedId = req.get("x-upload-id");
+    const requestedId = scriptName === undefined ? req.get("x-upload-id") : undefined;
     if (requestedId !== undefined && !BLOB_ID_PATTERN.test(requestedId)) {
       res.status(400).json({ error: "The upload ID is invalid" });
       return;
@@ -168,7 +186,12 @@ export function attachmentsRouter({ store, config, pins, onAttachmentChanged }: 
         return;
       }
       const username = requestUsername(res);
-      if (username !== null) {
+      if (scriptName !== undefined) {
+        if (!scripts!.allowed(res, livePad)) {
+          discard();
+          return;
+        }
+      } else if (username !== null) {
         const failure = writeFailure(livePad, pins, req.headers, username);
         if (failure) {
           discard();
@@ -180,8 +203,25 @@ export function attachmentsRouter({ store, config, pins, onAttachmentChanged }: 
         // Promote and book the bytes together before another upload can finish.
         renameSync(partialPath, store.blobPath(slug, blobId));
         store.recordBlob(slug, blobId, received);
-        onAttachmentChanged?.(slug);
-        res.status(201).json({ blobId, size: received });
+        if (scriptName !== undefined) {
+          const contentType = req.get("Content-Type")?.split(";")[0]?.trim().toLowerCase();
+          try {
+            scripts!.update(pad, (doc) => {
+              doc.getArray("attachments").push([{
+                blobId, name: scriptName, size: received,
+                contentType: contentType && contentType !== "application/x-www-form-urlencoded" ? contentType : "application/octet-stream",
+                addedAt: new Date().toISOString(),
+              }]);
+            });
+          } catch (error) {
+            store.forgetBlob(slug, blobId);
+            throw error;
+          }
+          res.status(201).end();
+        } else {
+          onAttachmentChanged?.(slug);
+          res.status(201).json({ blobId, size: received });
+        }
       } catch (error) {
         discard();
         unlink(store.blobPath(slug, blobId), () => {});

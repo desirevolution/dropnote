@@ -111,7 +111,7 @@ export class PadStore {
   readonly dataDir: string;
   readonly #indexFile: string;
   #index: PadIndex;
-  readonly #deleting = new Set<string>();
+  readonly #deleting = new Map<string, Promise<boolean>>();
 
   private constructor(dataDir: string, indexFile: string, index: PadIndex) {
     this.dataDir = dataDir;
@@ -302,8 +302,15 @@ export class PadStore {
     const pad = this.#index.pads[slug];
     if (!pad) throw new Error(`Cannot record a blob for unknown Pad "${slug}"`);
     pad.blobs = pad.blobs ?? {};
+    const previous = pad.blobs[blobId];
     pad.blobs[blobId] = { size, createdAt: new Date().toISOString() };
-    this.#save();
+    try {
+      this.#save();
+    } catch (error) {
+      if (previous) pad.blobs[blobId] = previous;
+      else delete pad.blobs[blobId];
+      throw error;
+    }
   }
 
   /** Forgets a blob in the index; the caller removes the file itself. */
@@ -426,18 +433,25 @@ export class PadStore {
   }
 
   /** Stops access before draining live writes and removing the Pad's data. */
-  async removePad(slug: string, onDelete?: (slug: string) => Promise<void> | void): Promise<boolean> {
-    if (!this.getPad(slug) || this.#deleting.has(slug)) return false;
-    this.#deleting.add(slug);
-    try {
+  removePad(slug: string, onDelete?: (slug: string) => Promise<void> | void): Promise<boolean> {
+    const pending = this.#deleting.get(slug);
+    if (pending) return pending;
+    if (!this.getPad(slug)) return Promise.resolve(false);
+    const removal = Promise.resolve().then(async () => {
       await onDelete?.(slug);
-      delete this.#index.pads[slug];
-      this.#save();
       rmSync(this.padDir(slug), { recursive: true, force: true });
+      const pad = this.#index.pads[slug]!;
+      delete this.#index.pads[slug];
+      try {
+        this.#save();
+      } catch (error) {
+        this.#index.pads[slug] = pad;
+        throw error;
+      }
       return true;
-    } finally {
-      this.#deleting.delete(slug);
-    }
+    }).finally(() => this.#deleting.delete(slug));
+    this.#deleting.set(slug, removal);
+    return removal;
   }
 
   /** Atomic rewrite: write a temp file, then rename it over the index. */

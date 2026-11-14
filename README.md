@@ -189,6 +189,53 @@ docker run --rm \
 
 Keep encrypted spaces' passphrases separately. The volume contains the data needed to restore the space. See [Docker's volume backup and restore guide](https://docs.docker.com/engine/storage/volumes/#back-up-restore-or-migrate-data-volumes).
 
+## Append from scripts
+
+The script endpoints use the same verified `X-Forwarded-User` identity as the web app in multiuser mode. Send the requests to the internal Dropnote host through your trusted proxy. The script sends neither a Dropnote token nor an identity header. The proxy must establish the caller's identity and inject the header itself. If Authelia still requires an interactive login on that route, configure the proxy's verified identity path for the script first. Keep both endpoints off the guest host.
+
+From the project directory, set `DROPNOTE` once and use the bundled POSIX shell scripts. Both require `curl` (7.76 or newer).
+
+```sh
+export DROPNOTE=https://dropnote.example.com
+
+# Append stdin or a text file to your personal default space.
+printf '%s\n' 'Build finished.' | ./scripts/dropnote-text
+./scripts/dropnote-text notes.txt
+
+# Upload a file. The script uses the basename as the filename.
+./scripts/dropnote-file screenshot.png
+
+# Send command output as a named file to another space.
+journalctl -u caddy -n 200 |
+  ./scripts/dropnote-file -s build-logs -n 'Build logs' -f caddy.log -t text/plain -
+```
+
+Use `-s` to select the space by its URL slug and `-n` to set its display name on creation. `dropnote-file` requires `-f` for stdin and accepts `-t` to set the MIME type. Without `-t`, it tries the local `file` command for files and otherwise sends `application/octet-stream`. Use `-h` for usage. The scripts stay quiet on success and exit nonzero on a failed request, including an SSO redirect. Keep the two executables and `dropnote-common.sh` together if you copy them elsewhere.
+
+The corresponding raw requests are:
+
+```bash
+DROPNOTE=https://dropnote.example.com
+
+printf '%s\n' 'Build finished.' |
+  curl --fail-with-body -H 'Content-Type: text/plain; charset=utf-8' \
+    --data-binary @- "$DROPNOTE/api/pads/default/script/text"
+
+curl --fail-with-body -H 'X-Filename: screenshot.png' \
+  -H 'Content-Type: image/png' --data-binary @screenshot.png \
+  "$DROPNOTE/api/pads/default/script/files"
+
+journalctl -u caddy -n 200 |
+  curl --fail-with-body -H 'X-Filename: caddy.log' -H 'Content-Type: text/plain' \
+    -H 'X-Space-Name: Build logs' --data-binary @- \
+    "$DROPNOTE/api/pads/build-logs/script/files"
+```
+
+- `default` selects the caller's personal default space. For another space, use its URL slug. A missing or expired named space is created with the instance's default lifetime. `X-Space-Name` optionally sets its display name on creation. Existing spaces keep their name and expiry.
+- You can write to your own spaces and spaces you can edit. Both endpoints require a normal space without a write PIN. If an instance PIN is set, create new spaces in the web app first.
+- The text endpoint accepts non-empty UTF-8 up to 1 MiB and returns `204`. Each appended block starts with a line containing `---`, including the first block in an empty note. The files endpoint accepts one raw file per request, requires `X-Filename`, and returns `201`. It uses the instance's file and storage limits. Both success responses have an empty body.
+- Both actions update open browser tabs. Each successful request appends again, so retrying after a timeout can create duplicates.
+
 ## Reverse proxy
 
 Dropnote serves HTTP and Live-Sync WebSockets under `/sync/<slug>`. Terminate TLS at your reverse proxy. If you use Authelia, apply its access policy to the entire site, including the API and WebSocket path. With multiuser mode enabled, Dropnote applies account permissions inside the app.

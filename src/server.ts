@@ -29,6 +29,7 @@ export async function startServer(config: Config): Promise<RunningServer> {
     notifyAccount: (username) => relay.notifyAccount(username),
     onAttachmentChanged: (slug) => relay.attachmentChanged(slug),
     guestUpdates: (pad) => relay.guestUpdates(pad),
+    scriptUpdate: (pad, apply) => relay.updatePlainPad(pad, apply),
     padRevision: (pad) => relay.revision(pad),
     onGrantChanged: (slug, username, role) => {
       pins.revokeUser(slug, username);

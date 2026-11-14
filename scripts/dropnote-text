@@ -1,0 +1,31 @@
+#!/bin/sh
+set -eu
+. "${0%/*}/dropnote-common.sh"
+
+usage() {
+    printf '%s\n' 'Usage: dropnote-text [-s SPACE] [-n DISPLAY_NAME] [TEXT_FILE|-]' \
+        'Append UTF-8 from a file or stdin. SPACE defaults to default.'
+}
+
+space=default
+display_name=
+while getopts ':s:n:h' option; do
+    case $option in
+        s) space=$OPTARG ;;
+        n) display_name=$OPTARG ;;
+        h) usage; exit 0 ;;
+        :) fail "Option -$OPTARG needs a value." ;;
+        \?) fail "Unknown option -$OPTARG. See -h." ;;
+    esac
+done
+shift "$((OPTIND - 1))"
+[ "$#" -le 1 ] || fail 'Provide one text file or use stdin. See -h.'
+
+source=${1--}
+if [ "$source" = "-" ]; then
+    [ ! -t 0 ] || fail 'Pipe in text or pass a text file. See -h.'
+else
+    [ -f "$source" ] && [ -r "$source" ] || fail "Cannot read file: $source"
+fi
+
+send_to_dropnote text 204 -H 'Content-Type: text/plain; charset=utf-8' --data-binary "@$source"

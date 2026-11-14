@@ -10,6 +10,7 @@ import { PIN_PATTERN, hashPin } from "./pin.ts";
 import type { PinAuthority } from "./pin.ts";
 import { secureEquals } from "./secure-compare.ts";
 import { RateLimitCounter, clientIpOf, rateLimiter } from "./ratelimit.ts";
+import { scriptIngest, type ScriptIngest } from "./script-ingest.ts";
 import { getPadOrAnswer404, jsonNoPad, requestUsername } from "./pad-request.ts";
 import { messageOf } from "./errors.ts";
 import { canEdit, hasPadProof, padRole, parseEncryption, writeFailure } from "./pad-access.ts";
@@ -30,6 +31,7 @@ export interface AppOptions {
   notifyAccount?: (username: string) => void;
   onAttachmentChanged?: (slug: string) => void;
   guestUpdates?: (pad: PadRecord) => Buffer[];
+  scriptUpdate?: ScriptIngest["update"];
   padRevision?: (pad: PadRecord) => PadRevision;
   onExpiryChanged?: (slug: string, expiresAt: string | null) => void;
 }
@@ -68,7 +70,6 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     next();
   });
   if (config.guestOrigin) app.use("/api/pads", guestManagement(store, config));
-  app.use(express.json());
   app.get("/api/words/:language", (req, res) => {
     const language = req.params.language;
     if (language !== "en" && language !== "de") {
@@ -102,7 +103,12 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
 
   // Attachment bytes for any Pad (ticket 03); Pad creation lives at the
   // router's root (/api/pads) and is registered separately below.
-  app.use("/api/pads", attachmentsRouter({ store, config, pins: options.pins, onAttachmentChanged: options.onAttachmentChanged }));
+  const scripts = config.trustedProxies && options.scriptUpdate ? scriptIngest(store, config, {
+    update: options.scriptUpdate, onPadDeleted: options.onPadDeleted, notifyAccount: options.notifyAccount,
+  }) : undefined;
+  if (scripts) app.post("/api/pads/:slug/script/text", scripts.readText, scripts.append);
+  app.use("/api/pads", attachmentsRouter({ store, config, pins: options.pins, onAttachmentChanged: options.onAttachmentChanged, scripts }));
+  app.use(express.json());
 
   app.get(["/", "/default"], (_req, res) => {
     const username = requestUsername(res);

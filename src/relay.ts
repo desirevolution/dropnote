@@ -1,4 +1,5 @@
 /** Relays opaque Yjs updates and short-lived presence for each Pad. */
+import * as Y from "yjs";
 import { randomUUID } from "node:crypto";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
@@ -116,6 +117,32 @@ export class SyncRelay {
     return this.#logFor(pad.slug).current();
   }
 
+  updatePlainPad(pad: PadRecord, apply: (doc: Y.Doc) => void): void {
+    if (pad.kind !== "plain" || this.#store.getLivePad(pad.slug) !== pad) {
+      throw new Error("The plain space is no longer available");
+    }
+    const log = this.#logFor(pad.slug);
+    // Replay and append in one synchronous turn so browser writes cannot interleave.
+    const doc = new Y.Doc();
+    let frame: Buffer | undefined;
+    try {
+      for (const update of log.updates()) Y.applyUpdate(doc, update);
+      doc.on("update", (update: Uint8Array) => { frame = Buffer.from(update); });
+      doc.transact(() => apply(doc));
+    } finally {
+      doc.destroy();
+    }
+    if (frame) this.#writeUpdate(pad.slug, log, frame);
+  }
+
+  #writeUpdate(slug: string, log: UpdateLog, update: Buffer, writer?: WebSocket): void {
+    const { revision } = log.append(update);
+    for (const peer of this.#rooms.get(slug) ?? []) {
+      if (peer !== writer && peer.readyState === WebSocket.OPEN) peer.send(update);
+    }
+    this.#announceRevision(slug, revision, writer);
+  }
+
   attachmentChanged(slug: string): void {
     try {
       const { revision } = this.#logFor(slug).append(Buffer.alloc(0));
@@ -217,15 +244,12 @@ export class SyncRelay {
       const update = data as Buffer;
       if (!update.length) return;
       try {
-        log.append(update);
+        this.#writeUpdate(slug, log, update, client);
       } catch (error) {
         console.error("Pad update could not be stored:", error);
         client.close(1011, "Pad update could not be stored");
         return;
       }
-      broadcast(room, client, update);
-      const revision = log.current().revision;
-      this.#announceRevision(slug, revision, client);
     });
     const leave = () => {
       room.delete(client);
