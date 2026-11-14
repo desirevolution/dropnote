@@ -38,6 +38,10 @@ test("a creation handoff is consumed once and is tied to the space address and c
   assert.equal(link.pathname, pad.path);
   assert.equal(link.search, "");
   const fragment = new URLSearchParams(link.hash.slice(1)).get("passphrase");
-  assert.deepEqual(consumeOpeningSecret(pad, fragment), { passphrase, created: false });
-  assert.equal(consumeOpeningSecret({ ...pad, encrypted: false }, fragment), null);
+  assert.equal(fragment, passphrase);
+  browser.assign.mock.resetCalls();
+  Object.defineProperty(globalThis, "sessionStorage", { configurable: true, get() { throw new Error("storage unavailable"); } });
+  openCreatedSpace(pad, passphrase);
+  assert.equal(browser.assign.mock.calls[0]?.arguments[0], pad.path);
+  assert.equal(consumeOpeningSecret(pad), null);
 });

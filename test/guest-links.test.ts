@@ -122,7 +122,9 @@ test("only an unlocked owner can issue a link and public HTTP and WS expose gues
   assert.ok(Date.parse(link.expiresAt) < Date.parse(app.pad.expiresAt!));
   assert.equal((await app.send(guestPath, { headers: app.alice })).status, 200);
   assert.equal((await app.send(guestPath, { headers: { "X-Forwarded-User": "bob" } })).status, 403);
-  assert.match((await app.send(`/p/${slug}`, { headers: app.alice })).text, /id="guest-link-dialog"/);
+  const ownerPage = (await app.send(`/p/${slug}`, { headers: app.alice })).text;
+  assert.match(ownerPage, /id="guest-link-dialog"/);
+  assert.doesNotMatch(ownerPage, /id="guest-link-include"|id="include-passphrase"/);
   assert.doesNotMatch((await app.send(`/p/${slug}`, { headers: { "X-Forwarded-User": "bob" } })).text, /id="guest-link-dialog"/);
   const listing = JSON.parse((await app.send("/api/my-spaces", { headers: app.alice })).text);
   assert.equal(listing.spaces[0].guestStatus.expiresAt, link.expiresAt);
@@ -144,6 +146,7 @@ test("only an unlocked owner can issue a link and public HTTP and WS expose gues
   assert.equal(page.headers["cache-control"], "no-store");
   assert.equal(page.headers["referrer-policy"], "no-referrer");
   assert.match(page.text, /Verschlüsselte Ablage öffnen/);
+  assert.doesNotMatch(page.text, /window\.takeOpeningPassphrase/);
   const script = page.text.match(/<script>([\s\S]*?)<\/script>/)![1]!;
   assert.ok(String(page.headers["content-security-policy"]).includes("'sha256-" + createHash("sha256").update(script).digest("base64") + "'"));
   assert.ok(!page.text.includes(displayName) && !page.text.includes("client-only note") && !page.text.includes(link.expiresAt));
@@ -226,6 +229,7 @@ test("an elapsed guest TTL blocks both opening and downloads while the space sta
 test("normal spaces require a separate password, serve the current content and issue revocable download sessions", async (t) => {
   const app = await setup(t, { plain: true, multiuser: true });
   const password = "example guest password";
+  assert.match((await app.send(`/p/${slug}`, { headers: app.alice })).text, /id="guest-link-include"/);
   const create = (oneTime: boolean) => app.send(guestPath, {
     method: "PUT", headers: app.alice, body: { duration: "24h", password, oneTime },
   });
@@ -235,6 +239,7 @@ test("normal spaces require a separate password, serve the current content and i
   const path = new URL(JSON.parse(issued.text).link.url).pathname;
   const page = await app.send(path, { host: guest });
   assert.match(page.text, /Guest password/);
+  assert.match(page.text, /window\.takeOpeningPassphrase/);
   assert.ok(!page.text.includes(password) && !page.text.includes(displayName));
   const open = (where: string, value: string) => app.send(where + "/open", {
     host: guest, method: "POST", headers: { Origin: guest }, body: { password: value },

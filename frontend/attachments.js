@@ -34,6 +34,8 @@ const dropZone = $("file-drop");
 const choose = $("choose-files");
 const pasteImage = $("paste-image");
 const pasteStatus = $("image-paste-status");
+const pasteFallback = $("image-paste-fallback");
+const pasteTarget = $("image-paste-target");
 const previewTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp", "image/x-icon"]);
 const imageExtensions = new Map([["image/jpeg", "jpg"], ["image/png", "png"], ["image/gif", "gif"], ["image/webp", "webp"], ["image/avif", "avif"], ["image/bmp", "bmp"], ["image/svg+xml", "svg"]]);
 
@@ -93,19 +95,37 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
   document.addEventListener("paste", (event) => {
     if (!canEdit || event.defaultPrevented || document.querySelector("dialog[open]")) return;
     const target = event.target;
+    if (pasteTarget.contains(target)) {
+      event.preventDefault();
+      if (!filesPanel.hidden && !pasteFallback.hidden) {
+        const images = clipboardEventImages(event.clipboardData);
+        if (images.length) uploadImages(images);
+        else imagePasteStatus("No image in the clipboard. Use Add files to choose an image.");
+      }
+      return;
+    }
     if (!note.contains(target)) {
       if (filesPanel.hidden) return;
       if (target instanceof Element &&
           (target.isContentEditable || target.closest("input, textarea, select, dialog"))) return;
     }
-    const clipboard = event.clipboardData;
-    const files = clipboard?.files.length ? Array.from(clipboard.files) : Array.from(clipboard?.items ?? [])
-      .filter((item) => item.kind === "file").map((item) => item.getAsFile());
-    const images = files.filter((file) => file?.type.startsWith("image/"));
+    const images = clipboardEventImages(event.clipboardData);
     if (!images.length) return;
     event.preventDefault();
     uploadImages(images);
   }, { capture: true, signal });
+
+  function clipboardEventImages(clipboard) {
+    const files = clipboard?.files.length ? Array.from(clipboard.files) : Array.from(clipboard?.items ?? [])
+      .filter((item) => item.kind === "file").map((item) => item.getAsFile());
+    return files.filter((file) => file?.type.startsWith("image/"));
+  }
+
+  function showPasteFallback(message) {
+    pasteFallback.hidden = false;
+    pasteTarget.focus();
+    imagePasteStatus(message);
+  }
 
   function imagePasteStatus(message) {
     pasteStatus.textContent = message ? t(message) : "";
@@ -129,16 +149,23 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
       }
       if (!stillInFiles()) return;
       if (images.length) uploadImages(images);
-      else imagePasteStatus("No image in the clipboard. Use Add files to choose an image.");
+      else showPasteFallback("No image was read. Use the device’s Paste action or Add files.");
     } catch {
-      if (stillInFiles()) imagePasteStatus("Clipboard images are unavailable here. Use Add files to choose an image.");
+      if (stillInFiles()) showPasteFallback("Use the device’s Paste action or Add files.");
     } finally {
       readingImages = false;
       if (!signal.aborted) pasteImage.disabled = !canEdit;
     }
   }, { signal });
 
+  pasteTarget.addEventListener("beforeinput", (event) => event.preventDefault(), { signal });
+  pasteTarget.addEventListener("input", () => pasteTarget.replaceChildren(), { signal });
+
   function uploadImages(images) {
+    if (document.activeElement === pasteTarget) {
+      (pasteImage.disabled ? choose : pasteImage).focus();
+    }
+    pasteFallback.hidden = true;
     imagePasteStatus("");
     const timestamp = new Date().toISOString().slice(0, 19).replace("T", "_").replaceAll(":", "-");
     uploadFiles(images.map((file, index) => {
@@ -413,7 +440,10 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
       canEdit = enabled;
       input.disabled = choose.disabled = dropZone.disabled = !enabled;
       pasteImage.disabled = !enabled || readingImages;
-      if (!enabled) imagePasteStatus("");
+      if (!enabled) {
+        pasteFallback.hidden = true;
+        imagePasteStatus("");
+      }
       for (const retry of uploadArea.querySelectorAll(".retry-upload")) retry.disabled = !enabled;
       resetDrag();
       render();
@@ -438,6 +468,7 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
       attachments.unobserve(render);
       closePreview();
       if (imageDialog.open) imageDialog.close();
+      pasteFallback.hidden = true;
       imagePasteStatus("");
       pasteImage.disabled = true;
       uploadArea.replaceChildren();

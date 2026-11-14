@@ -48,6 +48,8 @@ test("the Default Pad shows the plain-text editor alongside its files", async ()
     assert.doesNotMatch(body, /id="full-width"/, "the note tab already uses the available width");
     assert.doesNotMatch(body, /id="preview"/, "the Note has no rendered preview");
     assert.match(body, /id="files-tools"[^>]*>[\s\S]*?id="choose-files"[^>]*>[\s\S]*?id="paste-image"/, "the files tab offers a picker and clipboard image action");
+    assert.match(body, /id="image-paste-fallback" hidden>[\s\S]*?id="image-paste-target" contenteditable="true"/,
+      "native paste has an editable target when direct clipboard access is unavailable");
     assert.match(body, /<button[^>]*id="file-drop"[^>]*disabled[\s\S]*?Choose files[\s\S]*?<\/button>/,
       "the file drop zone is a keyboard-accessible file picker when uploads are enabled");
     assert.match(body, /<p[^>]*id="sync-error"[^>]*role="alert"/, "sync errors are announced separately from the editor");

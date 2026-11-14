@@ -164,7 +164,7 @@ if (opening) {
   window.addEventListener("pageshow", (event) => {
     if (event.persisted && !opening.oneTime) location.reload();
   });
-  if (fragment) {
+  if (fragment && !opening.encryption) {
     if (opening.oneTime) field.value = fragment;
     else void open(fragment);
   }

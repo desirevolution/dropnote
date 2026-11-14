@@ -18,7 +18,7 @@ import { dateLabel, forgetPad, initPadNavigation, localValue, notice, openPerson
 const $ = (id) => document.getElementById(id);
 const metadata = JSON.parse($("pad-metadata").textContent);
 const encrypted = metadata.encrypted;
-let openingSecret = consumeOpeningSecret(metadata, window.takeOpeningPassphrase?.());
+let openingSecret = consumeOpeningSecret(metadata);
 const workspace = $("workspace");
 const syncStatus = $("sync-status");
 const syncError = $("sync-error");
@@ -66,6 +66,7 @@ let uploadNoticeTimer;
 const tabs = initWorkspaceTabs({
   filesLink: new URLSearchParams(location.search).get("view") === "files",
   beforeChange(previous) {
+    $("image-paste-fallback").hidden = true;
     $("image-paste-status").hidden = true;
     $("image-paste-status").textContent = "";
     if (previous === "note") note?.saveScrollPosition();

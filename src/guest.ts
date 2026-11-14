@@ -9,7 +9,7 @@ import { detectLanguage } from "./locale.ts";
 import { hasPadProof, padRole } from "./pad-access.ts";
 import { getPadOrAnswer404, requestUsername } from "./pad-request.ts";
 import { RateLimitCounter, rateLimiter } from "./ratelimit.ts";
-import { SHARE_FRAGMENT_SCRIPT } from "./share-fragment.ts";
+import { SHARE_FRAGMENT_SCRIPT, STRIP_SHARE_FRAGMENT_SCRIPT } from "./share-fragment.ts";
 import { secureEquals } from "./secure-compare.ts";
 import { BLOB_ID_PATTERN, isDefaultPad, type GuestLink, type PadRecord, type PadStore } from "./store.ts";
 import { openUpdateLog } from "./update-log.ts";
@@ -17,7 +17,8 @@ import { openUpdateLog } from "./update-log.ts";
 const credentialPattern = /^[A-Za-z0-9_-]{43}$/;
 const maxSnapshotBytes = 1024 * 1024;
 const durations = { "1h": 3_600, "24h": 86_400, "7d": 604_800 };
-const fragmentScriptHash = createHash("sha256").update(SHARE_FRAGMENT_SCRIPT).digest("base64");
+const fragmentScriptHashes = [SHARE_FRAGMENT_SCRIPT, STRIP_SHARE_FRAGMENT_SCRIPT]
+  .map((script) => `'sha256-${createHash("sha256").update(script).digest("base64")}'`).join(" ");
 const bundle = fileURLToPath(new URL("../public/js/guest.bundle.js", import.meta.url));
 
 function randomCredential(): string {
@@ -201,7 +202,7 @@ export function guestRouter(
       "Referrer-Policy": "no-referrer",
       "X-Content-Type-Options": "nosniff",
       "X-Robots-Tag": "noindex, nofollow",
-      "Content-Security-Policy": `default-src 'none'; script-src 'self' 'sha256-${fragmentScriptHash}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+      "Content-Security-Policy": `default-src 'none'; script-src 'self' ${fragmentScriptHashes}; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
     });
     next();
   });

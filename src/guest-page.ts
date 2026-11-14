@@ -1,5 +1,5 @@
 import type { Language } from "./locale.ts";
-import { SHARE_FRAGMENT_SCRIPT } from "./share-fragment.ts";
+import { SHARE_FRAGMENT_SCRIPT, STRIP_SHARE_FRAGMENT_SCRIPT } from "./share-fragment.ts";
 import { translate } from "./translations.ts";
 
 export function renderGuestPage(language: Language, opening?: { encryption?: { salt: string; check: string }; oneTime: boolean }): string {
@@ -11,7 +11,7 @@ export function renderGuestPage(language: Language, opening?: { encryption?: { s
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Dropnote · ${t("Guest access")}</title>
-<script>${SHARE_FRAGMENT_SCRIPT}</script>
+<script>${opening && !opening.encryption ? SHARE_FRAGMENT_SCRIPT : STRIP_SHARE_FRAGMENT_SCRIPT}</script>
 <style>
 :root { color-scheme: light dark; font: 16px/1.5 system-ui, sans-serif; }
 body { margin: 0; background: Canvas; color: CanvasText; }

@@ -1,3 +1,4 @@
+import { STRIP_SHARE_FRAGMENT_SCRIPT } from "./share-fragment.ts";
 /**
  * Pad pages: every Pad — the Default Pad at the site root and additional
  * Pads under the configured path prefix — renders the same editor (a Note
@@ -7,7 +8,6 @@
 import { DEFAULT_PAD_SLUG, isDefaultPad, publicPadSlug, type PadRecord } from "./store.ts";
 import { PAD_CSS } from "./pad-styles.ts";
 import type { Language } from "./locale.ts";
-import { SHARE_FRAGMENT_SCRIPT } from "./share-fragment.ts";
 import { translate } from "./translations.ts";
 import { MAX_SLUG_LENGTH } from "./slug.ts";
 import { MAX_DISPLAY_NAME_LENGTH, spaceLabel } from "./space-label.ts";
@@ -122,7 +122,7 @@ export function renderPadPage(pad: PadRecord, options: PadPageOptions): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(heading)} – Dropnote</title>
-<script>${SHARE_FRAGMENT_SCRIPT}</script>
+<script>${STRIP_SHARE_FRAGMENT_SCRIPT}</script>
 <script>${THEME_RESTORE_SCRIPT}</script>
 <style>
 ${THEME_CSS}
@@ -265,6 +265,10 @@ ${PAD_CSS}
     <div class="transfer-notice" id="upload-notice" hidden>
       <span role="status" id="upload-notice-text"></span>
       <button type="button" class="quiet" id="show-upload">${t("Show files")}</button>
+    </div>
+    <div id="image-paste-fallback" hidden>
+      <p id="image-paste-target-label">${t("Paste a clipboard image here")}</p>
+      <div id="image-paste-target" contenteditable="true" role="textbox" aria-labelledby="image-paste-target-label" inputmode="none"></div>
     </div>
     <p id="image-paste-status" role="status" hidden></p>
     <p id="attachment-error" class="attachment-error" role="alert" hidden></p>
@@ -446,11 +450,12 @@ ${PAD_CSS}
       <div id="guest-link-share">
         <label for="guest-link-url">${t("Guest link")}</label>
         <input type="url" id="guest-link-url" readonly>
-        <label class="checkbox-field"><input type="checkbox" id="guest-link-include"> ${t(isEncrypted ? "Include passphrase in link and QR code" : "Include password in link and QR code")}</label>
-        <label id="guest-link-secret-label" hidden>${t(isEncrypted ? "Passphrase for this space" : "Password for this guest link")}
+        ${isEncrypted ? `<p>${t("Share the passphrase separately.")}</p>` : `
+        <label class="checkbox-field"><input type="checkbox" id="guest-link-include"> ${t("Include password in link and QR code")}</label>
+        <label id="guest-link-secret-label" hidden>${t("Password for this guest link")}
           <input type="password" id="guest-link-secret" autocomplete="off">
         </label>
-        <p id="guest-link-warning" hidden>${t("Anyone with this link and its password can open the space while the link is valid.")}</p>
+        <p id="guest-link-warning" hidden>${t("Anyone with this link and its password can open the space while the link is valid.")}</p>`}
         <div class="dialog-actions">
           <button type="button" id="guest-link-copy">${t("Copy link")}</button>
           <button type="button" id="guest-link-show-qr" aria-controls="guest-link-qr" aria-expanded="false">${t("Show QR code")}</button>
@@ -499,10 +504,6 @@ ${PAD_CSS}
       <h2 id="pad-qr-title">${t("Open on another device")}</h2>
       <button type="button" class="icon-button quiet" data-close-dialog aria-label="${t("Close")}">${icon("close")}</button>
     </header>
-    <div id="share-secret-options" hidden>
-      <label class="checkbox-field"><input type="checkbox" id="include-passphrase"> ${t("Include passphrase")}</label>
-      <p id="share-secret-warning" hidden>${t("The link and QR code contain the passphrase. Share them only with people who should be able to unlock this space.")}</p>
-    </div>
     ${(username || options.guestEnabled) ? `<p>${t("The other device may need to sign in to open this space.")}</p>` : ""}
     <canvas id="pad-qr" aria-label="${t("QR code for this space")}" role="img" hidden></canvas>
     <p id="pad-qr-error" class="form-error" role="alert" hidden>${t("Could not generate the QR code. You can still copy the link.")}</p>

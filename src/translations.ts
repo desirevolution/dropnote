@@ -119,8 +119,6 @@ const german: Record<string, string> = {
   "Save access": "Zugriff speichern",
   "Save expiry": "Ablauf speichern",
   "Open on another device": "Auf einem anderen Gerät öffnen",
-  "Include passphrase": "Passphrase einschließen",
-  "The link and QR code contain the passphrase. Share them only with people who should be able to unlock this space.": "Der Link und der QR-Code enthalten die Passphrase. Teile sie nur mit Personen, die die Ablage entsperren dürfen.",
   "QR code for this space": "QR-Code für diese Ablage",
   "Could not generate the QR code. You can still copy the link.": "Der QR-Code konnte nicht erzeugt werden. Du kannst den Link trotzdem kopieren.",
   "Enter the passphrase on the other device.": "Gib die Passphrase auf dem anderen Gerät ein.",
@@ -279,7 +277,6 @@ const german: Record<string, string> = {
   "No active guest link.": "Kein aktiver Gastlink.",
   "Replace guest link": "Gastlink ersetzen",
   "Could not update the guest link.": "Der Gastlink konnte nicht aktualisiert werden.",
-  "Enter the correct passphrase.": "Gib die richtige Passphrase ein.",
   "Could not share the guest link.": "Der Gastlink konnte nicht geteilt werden.",
   "Guest link redeemed": "Gastlink eingelöst",
   "Guest link active": "Gastlink aktiv",
@@ -306,9 +303,7 @@ const german: Record<string, string> = {
   "A valid encrypted snapshot is required.": "Für diesen Gastlink ist ein gültiger verschlüsselter Schnappschuss erforderlich.",
   "Files deleted from the space also disappear from guest access.": "Wenn du Dateien aus der Ablage löschst, können Gäste sie ebenfalls nicht mehr herunterladen.",
   "The encrypted snapshot is too large.": "Der verschlüsselte Schnappschuss ist zu groß.",
-  "Include passphrase in link and QR code": "Passphrase in Link und QR-Code aufnehmen",
   "Include password in link and QR code": "Passwort in Link und QR-Code aufnehmen",
-  "Passphrase for this space": "Passphrase dieser Ablage",
   "Password for this guest link": "Passwort für diesen Gastlink",
   "Password for the new guest link": "Passwort für den neuen Gastlink",
   "Deactivate guest link": "Gastlink deaktivieren",
@@ -332,7 +327,10 @@ const german: Record<string, string> = {
   "Unlock space": "Ablage entsperren",
   "The other device may need to sign in to open this space.": "Auf dem anderen Gerät ist gegebenenfalls eine Anmeldung erforderlich.",
   "No image in the clipboard. Use Add files to choose an image.": "Kein Bild in der Zwischenablage. Über „Dateien hinzufügen“ kannst du ein Bild auswählen.",
-  "Clipboard images are unavailable here. Use Add files to choose an image.": "Der Browser hat keinen Zugriff auf Bilder in der Zwischenablage. Verwende „Dateien hinzufügen“."
+  "Paste a clipboard image here": "Bild aus der Zwischenablage hier einfügen",
+  "Use the device’s Paste action or Add files.": "Tippe länger auf das Feld und wähle „Einfügen“ oder verwende „Dateien hinzufügen“.",
+  "No image was read. Use the device’s Paste action or Add files.": "Es wurde kein Bild gelesen. Halte das Feld gedrückt und wähle „Einfügen“ oder verwende „Dateien hinzufügen“.",
+  "Share the passphrase separately.": "Gib die Passphrase separat weiter."
 };
 
 export function translate(language: Language, message: string, values?: Record<string, string | number>): string {

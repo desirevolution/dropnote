@@ -113,8 +113,7 @@ test("the creation form offers encryption and sharing requires explicit passphra
     assert.match(body, /id="suggest-password"/);
     assert.match(body, /id="suggest-passphrase"/);
     assert.match(body, /id="create-passphrase"[^>]*minlength="12"/);
-    assert.match(body, /id="share-secret-options" hidden/);
-    assert.match(body, /id="include-passphrase">/);
+    assert.doesNotMatch(body, /id="share-secret-options"|id="include-passphrase"/);
     assert.match(body, /id="qr-copy-link"/);
     assert.match(body, /id="qr-copy-image"/);
     assert.match(body, /id="qr-save-image"/);

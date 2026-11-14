@@ -13,24 +13,22 @@ export function openCreatedSpace(pad, passphrase) {
         path: pad.path, createdAt: pad.createdAt, passphrase, time: Date.now(),
       }));
     } catch {
-      location.assign(secretLink(pad.path, passphrase));
-      return;
+      // If browser storage is unavailable, the new space asks for its passphrase.
     }
   }
   location.assign(pad.path);
 }
 
-export function consumeOpeningSecret(metadata, fragment) {
+export function consumeOpeningSecret(metadata) {
   let handoff;
   try {
     const raw = sessionStorage.getItem(handoffKey);
     sessionStorage.removeItem(handoffKey);
     if (raw) handoff = JSON.parse(raw);
   } catch {
-    // Links can still unlock the space without browser storage.
+    // The unlock form remains available without browser storage.
   }
   if (!metadata.encrypted) return null;
-  if (fragment) return { passphrase: fragment, created: false };
   if (handoff?.path === location.pathname && handoff.createdAt === metadata.createdAt &&
       typeof handoff.passphrase === "string" && Date.now() - handoff.time < 60_000) {
     return { passphrase: handoff.passphrase, created: true };

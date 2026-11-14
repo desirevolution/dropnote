@@ -11,3 +11,9 @@ export const SHARE_FRAGMENT_SCRIPT = `
       return value;
     };
   })();`;
+
+
+export const STRIP_SHARE_FRAGMENT_SCRIPT = `
+  if (location.hash.startsWith("#passphrase=")) {
+    history.replaceState(history.state, "", location.pathname + location.search);
+  }`;

@@ -178,6 +178,9 @@ export const PAD_CSS = `
   #appearance-menu summary, .pad-head details[data-action-menu] > summary { padding-inline: .6rem; }
   #files-card.is-dragging { outline: 2px solid var(--accent); outline-offset: -2px; }
   #copy-status { min-height: 1.25em; text-align: end; color: var(--muted); font-size: .8rem; }
+  #image-paste-fallback { margin-block-end: .5rem; }
+  #image-paste-target { min-height: 2.75rem; margin-block-start: .3rem; padding: .5rem; border: 1px dashed var(--border-strong); border-radius: .25rem; }
+  #image-paste-target:focus { outline: 2px solid var(--accent); }
   #image-paste-status { margin: 0 0 .65rem; color: var(--muted); font-size: .875rem; }
   .pad-notice { color: var(--muted); margin-bottom: .75rem; }
   .start-marker { display: inline-flex; align-items: center; gap: .3rem; width: fit-content; padding: .15rem .4rem; color: var(--accent); background: var(--accent-soft); border-radius: .25rem; font-size: .8rem; font-weight: 600; }

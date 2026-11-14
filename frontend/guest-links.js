@@ -2,7 +2,7 @@ import QRCode from "qrcode";
 import { t } from "./i18n.js";
 import { copyText, randomItems } from "./pad-actions.js";
 import { dateLabel } from "./pad-navigation.js";
-import { guestProofHash, passwordCharacters, unlockPadKey } from "./passphrase.js";
+import { guestProofHash, passwordCharacters } from "./passphrase.js";
 import { sealGuestSnapshot } from "./guest-snapshot.js";
 import { secretLink } from "./share-secret.js";
 
@@ -124,8 +124,10 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
   }
 
   function resetSharing() {
-    include.checked = false;
-    updateSecretControl();
+    if (include) {
+      include.checked = false;
+      updateSecretControl();
+    } else clearQr();
   }
 
   function resetDraft() {
@@ -161,8 +163,7 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
     validationTimer = setTimeout(async () => {
       let valid = false;
       try {
-        if (encryption) valid = Boolean(await unlockPadKey(passphrase, encryption));
-        else if (passphrase.length >= 12 && passphrase.length <= 256) {
+        if (passphrase.length >= 12 && passphrase.length <= 256) {
           const response = await fetch(`${api}/guest-link/check-password`, {
             method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: passphrase }),
           });
@@ -172,7 +173,7 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
       catch { /* Show the same feedback as an incorrect passphrase. */ }
       if (current !== version || !dialog.open) return;
       if (!valid) {
-        feedback.textContent = t(encryption ? "Enter the correct passphrase." : "Enter the correct guest password.");
+        feedback.textContent = t("Enter the correct guest password.");
         return;
       }
       verifiedPassphrase = passphrase;
@@ -273,7 +274,7 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
     ready = false;
     render();
   });
-  include.addEventListener("change", () => {
+  include?.addEventListener("change", () => {
     updateSecretControl();
     if (!$("secret-label").hidden) field.focus();
   });
@@ -309,7 +310,7 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
     if (view === "confirm") cancelRevoke.click();
     else cancelReplace.click();
   });
-  field.addEventListener("input", validateSecret);
+  field?.addEventListener("input", validateSecret);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const key = getKey();
@@ -379,8 +380,8 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
   async function share(drawQr) {
     if (!link || link.redeemedAt) return;
     const current = ++version;
-    if (include.checked && !verifiedPassphrase) return;
-    const address = verifiedPassphrase ? secretLink(link.url, verifiedPassphrase) : link.url;
+    if (include?.checked && !verifiedPassphrase) return;
+    const address = !encryption && verifiedPassphrase ? secretLink(link.url, verifiedPassphrase) : link.url;
     try {
       if (drawQr) {
         if (!canvas.hidden) {
