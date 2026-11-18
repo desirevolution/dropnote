@@ -3,7 +3,7 @@
 # Build stage: install the full toolchain and bundle the editor frontend
 # and guest page into public/js/. The server
 # itself needs no build step — Node 24 runs the TypeScript sources directly.
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --silent
@@ -17,7 +17,7 @@ RUN npm run build
 # bundle — no dev tools, no build leftovers. The container runs as the image's
 # non-root user (node, UID 1000); the data directory must be owned by that UID
 # when a host directory is mounted (see README, "Data volume ownership").
-FROM node:24-alpine
+FROM node:26-alpine
 ENV NODE_ENV=production \
     PORT=3000 \
     DATA_DIR=/app/data
