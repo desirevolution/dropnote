@@ -160,6 +160,8 @@ const german: Record<string, string> = {
   "{name} is now your start page in this browser.": "{name} ist jetzt deine Startseite in diesem Browser.",
   "This browser could not save the start page.": "Dieser Browser konnte die Startseite nicht speichern.",
   "Shared with {name}": "Freigegeben für {name}",
+  "Open link in a new tab": "Link in neuem Tab öffnen",
+  "Ctrl/Cmd-click or tap to open link": "Strg/Cmd-Klick oder Tippen zum Öffnen des Links",
   "Write or paste text here…": "Text schreiben oder einfügen …",
   "Link copied.": "Link kopiert.",
   "Files link copied.": "Link zur Dateiansicht kopiert.",

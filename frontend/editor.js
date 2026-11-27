@@ -1,3 +1,4 @@
+import { workspaceViewKey } from "../src/workspace-view.ts";
 import { spaceLabel } from "../src/space-label.ts";
 import * as Y from "yjs";
 import { initGuestLinks } from "./guest-links.js";
@@ -70,8 +71,11 @@ function focusDesktopNote() {
       !document.querySelector("dialog[open]")) note?.focus();
 }
 
+const tabKey = workspaceViewKey(metadata);
 const tabs = initWorkspaceTabs({
   filesLink: new URLSearchParams(location.search).get("view") === "files",
+  readSelection: () => localValue(tabKey),
+  saveSelection: (view) => saveLocal(tabKey, view),
   onNoteClick: focusDesktopNote,
   beforeChange(previous) {
     $("image-paste-fallback").hidden = true;

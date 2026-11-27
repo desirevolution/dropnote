@@ -21,10 +21,10 @@ header span { margin-inline-start: .6rem; color: GrayText; }
 h1 { font-size: 1.45rem; overflow-wrap: anywhere; }
 h2 { font-size: 1.15rem; }
 label { display: block; margin-bottom: .3rem; }
-input, button, textarea { font: inherit; padding: .5rem .7rem; }
+input, button { font: inherit; padding: .5rem .7rem; }
 input { box-sizing: border-box; width: min(22rem, 100%); margin-bottom: .5rem; }
 button { cursor: pointer; }
-textarea { box-sizing: border-box; width: 100%; min-height: 9rem; resize: vertical; font-family: ui-monospace, monospace; }
+#guest-note { box-sizing: border-box; width: 100%; min-height: 9rem; max-height: 65vh; overflow: auto; resize: vertical; padding: .5rem .7rem; border: 1px solid GrayText; margin: 0 0 .5rem; font: inherit; font-family: ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 ul { padding: 0; }
 li { list-style: none; padding: .65rem 0; border-bottom: 1px solid GrayText; display: flex; align-items: center; justify-content: space-between; gap: .75rem; overflow-wrap: anywhere; }
 li span { min-width: 0; }
@@ -48,8 +48,8 @@ ${opening ? `<section id="guest-locked">
   <p id="guest-expiry"></p>
   <p>${t(opening.encryption ? "This link shares an encrypted snapshot. Later changes are not included." : "This link shows the current state when opened.")}</p>
   <p id="guest-captured" hidden></p>
-  <h2><label for="guest-note">${t("Note")}</label></h2>
-  <textarea id="guest-note" readonly></textarea>
+  <h2 id="guest-note-title">${t("Note")}</h2>
+  <pre id="guest-note" role="region" aria-labelledby="guest-note-title" tabindex="0"></pre>
   <button id="guest-copy" type="button">${t("Copy text")}</button>
   <h2>${t("Files")}</h2>
   <ul id="guest-files"></ul>

@@ -1,5 +1,6 @@
+import { initialWorkspaceView } from "../src/workspace-view.ts";
 import { t } from "./i18n.js";
-export function initWorkspaceTabs({ filesLink, beforeChange, afterChange, onNoteClick }) {
+export function initWorkspaceTabs({ filesLink, readSelection, saveSelection, beforeChange, afterChange, onNoteClick }) {
   const toolbar = document.getElementById("workspace-toolbar");
   const views = ["note", "files"];
   const tabs = views.map((view) => document.getElementById(`${view}-tab`));
@@ -18,6 +19,7 @@ export function initWorkspaceTabs({ filesLink, beforeChange, afterChange, onNote
         panels[index].hidden = !active;
         tools[index].hidden = !active;
       }
+      saveSelection(view);
       afterChange(view);
     }
     if (focus) tabs[views.indexOf(view)].focus();
@@ -44,7 +46,7 @@ export function initWorkspaceTabs({ filesLink, beforeChange, afterChange, onNote
     showInitial(noteText, fileCount) {
       toolbar.hidden = false;
       if (selected) return;
-      select(filesLink || (!noteText.trim() && fileCount > 0) ? "files" : "note");
+      select(initialWorkspaceView(filesLink, readSelection(), noteText, fileCount));
     },
     showFiles() {
       select("files", true);

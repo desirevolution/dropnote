@@ -1,3 +1,4 @@
+import { noteLinks } from "../src/note-links.ts";
 import { decryptAttachment } from "./encrypted-attachments.js";
 import { listedGuestFiles, openGuestSnapshot } from "./guest-snapshot.js";
 import { t } from "./i18n.js";
@@ -23,7 +24,7 @@ if (opening) {
     clearTimeout(expiryTimer);
     transfers.abort();
     $("guest-content").hidden = true;
-    $("guest-note").value = "";
+    $("guest-note").replaceChildren();
     $("guest-files").replaceChildren();
     $("guest-name").textContent = "";
     $("guest-expiry").textContent = "";
@@ -116,7 +117,21 @@ if (opening) {
       const data = await result.json();
       const content = key ? await openGuestSnapshot(key, data.snapshot) : data;
       signal.throwIfAborted();
-      $("guest-note").value = content.note;
+      const note = $("guest-note");
+      const fragment = document.createDocumentFragment();
+      let offset = 0;
+      for (const link of noteLinks(content.note)) {
+        fragment.append(content.note.slice(offset, link.from));
+        const anchor = document.createElement("a");
+        anchor.href = link.href;
+        anchor.target = "_blank";
+        anchor.rel = "noopener noreferrer";
+        anchor.textContent = content.note.slice(link.from, link.to);
+        fragment.append(anchor);
+        offset = link.to;
+      }
+      fragment.append(content.note.slice(offset));
+      note.replaceChildren(fragment);
       const allowedIds = key ? new Set(data.fileIds) : null;
       const entries = listedGuestFiles(content.files).reverse()
         .filter(({ blobId }) => !allowedIds || allowedIds.has(blobId));
@@ -142,7 +157,7 @@ if (opening) {
         return row;
       }));
       $("guest-no-files").hidden = entries.length > 0;
-      $("guest-copy").disabled = !$("guest-note").value;
+      $("guest-copy").disabled = !$("guest-note").textContent;
       $("guest-content").hidden = false;
       $("guest-locked").hidden = true;
       field.value = "";
@@ -155,7 +170,7 @@ if (opening) {
     }
   }
 
-  $("guest-copy").addEventListener("click", () => void copyText($("guest-note").value, status, t("Text copied.")));
+  $("guest-copy").addEventListener("click", () => void copyText($("guest-note").textContent, status, t("Text copied.")));
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     void open(field.value);

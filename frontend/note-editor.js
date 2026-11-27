@@ -5,6 +5,7 @@ import { defaultKeymap } from "@codemirror/commands";
 import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
 
 import { t } from "./i18n.js";
+import { noteLinkExtension } from "./note-link-extension.js";
 
 const colors = ["#cf4c73", "#478bf3", "#3d9b6d", "#cb7723", "#9061dd", "#2098a9"];
 
@@ -124,6 +125,7 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
       gutters.of([]),
       EditorView.contentAttributes.of({ "aria-labelledby": "note-title", spellcheck: "false", tabindex: "0" }),
       placeholder(t("Write or paste text here…")),
+      noteLinkExtension,
       keymap.of([
         ...yUndoManagerKeymap.map((binding) => ({
           ...binding,

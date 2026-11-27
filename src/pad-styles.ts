@@ -65,6 +65,9 @@ export const PAD_CSS = `
   #note .cm-scroller { font: var(--note-font-size, .96rem)/1.65 "IBM Plex Mono", ui-monospace, "DejaVu Sans Mono", monospace; }
   #note .cm-content { align-self: stretch; padding: 1rem 1.1rem; caret-color: var(--fg); }
   #note .cm-line { padding: 0; }
+  #note .note-link { color: var(--accent); text-decoration: underline; cursor: pointer; }
+  #note .cm-content[contenteditable="true"] .note-link { cursor: text; }
+  @media (pointer: coarse) { #note .cm-content[contenteditable="true"] .note-link { cursor: pointer; } }
   .note-card:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
   #note .cm-editor.cm-focused, #note .cm-content:focus-visible { outline: none; }
   #note .cm-placeholder { color: var(--muted); }

@@ -1,3 +1,4 @@
+import { workspaceViewKey } from "../src/workspace-view.ts";
 import { spaceLabel } from "../src/space-label.ts";
 import { addMyPad, listMyPads, removeMyPad, STORAGE_KEY } from "./my-pads.js";
 import { language, t } from "./i18n.js";
@@ -141,6 +142,7 @@ export function sharingLabel(pad) {
 }
 
 export function forgetPad(pad) {
+  saveLocal(workspaceViewKey(pad), null);
   const storage = localStore();
   if (storage) removeMyPad(storage, new URL(pad.path, location.origin).href, pad.createdAt);
   if (samePad(startPad(), pad)) saveLocal(startKey, null);
