@@ -25,6 +25,10 @@ test("the Default Pad shows the plain-text editor alongside its files", async ()
     assert.match(body, /class="workspace-footer">[\s\S]*?id="read-mode">/);
     const viewMenu = /<details id="note-view"[\s\S]*?<\/details>/.exec(body)?.[0] ?? "";
     assert.doesNotMatch(viewMenu, /id="read-mode"/);
+    for (const id of ["highlight-active-line", "clickable-links", "interactive-checklists", "markdown-formatting"]) {
+      assert.match(viewMenu, new RegExp(`id="${id}" checked`));
+    }
+    assert.match(body, /id="find-note"[^>]*disabled>/);
     assert.match(body, /IBM Plex Mono/);
     const font = await fetch(`${server.baseUrl}/fonts/IBMPlexMono-Regular.woff2`);
     assert.equal(font.status, 200);

@@ -146,6 +146,10 @@ test("only an unlocked owner can issue a link and public HTTP and WS expose gues
   assert.equal(page.headers["cache-control"], "no-store");
   assert.equal(page.headers["referrer-policy"], "no-referrer");
   assert.match(page.text, /Verschlüsselte Ablage öffnen/);
+  assert.match(page.text, /id="guest-find"/);
+  assert.match(page.text, /id="guest-markdown"[^>]*checked/);
+  assert.match(page.text, /id="guest-links"[^>]*checked/);
+  assert.match(page.text, /id="guest-checklists"[^>]*checked/);
   assert.doesNotMatch(page.text, /window\.takeOpeningPassphrase/);
   const script = page.text.match(/<script>([\s\S]*?)<\/script>/)![1]!;
   assert.ok(String(page.headers["content-security-policy"]).includes("'sha256-" + createHash("sha256").update(script).digest("base64") + "'"));

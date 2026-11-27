@@ -1,3 +1,5 @@
+import { SMART_NOTE_CSS } from "./smart-note-styles.ts";
+
 export const PAD_CSS = `
   @font-face { font-family: "IBM Plex Mono"; src: url("/fonts/IBMPlexMono-Regular.woff2") format("woff2"); font-style: normal; font-weight: 400; font-display: swap; }
   * { box-sizing: border-box; }
@@ -273,4 +275,5 @@ export const PAD_CSS = `
     .topbar .home-link { font-size: 0; gap: 0; padding-inline: .6rem; }
     .topbar .account-name { max-inline-size: 9rem; }
   }
+  ${SMART_NOTE_CSS}
 `;

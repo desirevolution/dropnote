@@ -1,4 +1,4 @@
-import { workspaceViewKey } from "../src/workspace-view.ts";
+import { workspaceViewKey, workspacePositionKey } from "../src/workspace-view.ts";
 import { spaceLabel } from "../src/space-label.ts";
 import * as Y from "yjs";
 import { initGuestLinks } from "./guest-links.js";
@@ -72,6 +72,7 @@ function focusDesktopNote() {
 }
 
 const tabKey = workspaceViewKey(metadata);
+const positionKey = workspacePositionKey(metadata);
 const tabs = initWorkspaceTabs({
   filesLink: new URLSearchParams(location.search).get("view") === "files",
   readSelection: () => localValue(tabKey),
@@ -139,6 +140,11 @@ const viewPreferences = [
     value: () => lineNumbers.checked ? "1" : "0",
     apply: () => note?.setLineNumbers(lineNumbers.checked),
   },
+  ...[["links", "clickable-links"], ["markdown", "markdown-formatting"], ["checklists", "interactive-checklists"], ["activeLine", "highlight-active-line"]].map(([name, id]) => {
+    const control = $(id);
+    return { key: `dropnote:note-${id}`, control, read: value => { control.checked = value !== "0"; },
+      value: () => control.checked ? "1" : "0", apply: () => note?.setSmartOption(name, control.checked) };
+  }),
 ];
 function restoreViewPreference(preference) {
   preference.read(localValue(preference.key));
@@ -183,6 +189,7 @@ noteView.addEventListener("keydown", (event) => {
     noteView.querySelector("summary").focus();
   }
 });
+$("find-note").addEventListener("click", () => note?.openSearch());
 $("undo-note").addEventListener("click", () => note?.undo());
 $("redo-note").addEventListener("click", () => note?.redo());
 $("paste-note").addEventListener("click", async () => {
@@ -305,6 +312,7 @@ function showExpiry(expiresAt) {
 function updateActions() {
   noteCopy.disabled = noteDownload.disabled = !noteText;
   const states = {
+    "find-note": connectionState !== "writable" && connectionState !== "readonly",
     "paste-note": !writable || readingClipboard,
     "undo-note": !writable || !canUndo,
     "redo-note": !writable || !canRedo,
@@ -335,6 +343,7 @@ function setState(state) {
 
   if (active && enteringWorkspace) {
     enteringWorkspace = false;
+    note?.activatePosition();
     const focused = document.activeElement;
     if (focused === document.body || focused === document.documentElement || focused?.closest("#key-prompt[hidden]")) {
       focusDesktopNote();
@@ -378,6 +387,7 @@ function showSyncError(message) {
 function onMissing() {
   if (unlockKey) saveLocal(unlockKey, null);
   closeWorkspace();
+  saveLocal(positionKey, null);
   // Let the home route remove an unavailable personal start pad and show its fallback notice.
   if (localValue("dropnote:start-pad")) {
     try {
@@ -412,6 +422,7 @@ async function openPad(key = null) {
   showSyncError("");
   doc = new Y.Doc();
   note = initNoteEditor(doc.getText("note"), {
+    positionStorage: { read: () => localValue(positionKey), write: value => saveLocal(positionKey, value) },
     onText(value) {
       noteText = value;
       updateActions();
@@ -425,8 +436,7 @@ async function openPad(key = null) {
       sync?.presence(position);
     },
   });
-  note.setWordWrap(wordWrap.checked);
-  note.setLineNumbers(lineNumbers.checked);
+  for (const preference of viewPreferences) preference.apply();
   attachments = initAttachments(doc, metadata.slug, {
     key,
     writeHeaders,
@@ -600,6 +610,7 @@ async function deleteSpace(space) {
     headers: { "x-pad-created-at": space.createdAt },
   });
   if (!response.ok) throw new Error(await responseError(response));
+  if (space.slug === metadata.slug && space.createdAt === metadata.createdAt) closeWorkspace();
   forgetPad(space);
   if (space.slug === metadata.slug && space.createdAt === metadata.createdAt) {
     if (unlockKey) saveLocal(unlockKey, null);

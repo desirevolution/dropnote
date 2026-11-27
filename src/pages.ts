@@ -238,6 +238,7 @@ ${PAD_CSS}
           <button type="button" class="quiet" id="undo-note" aria-label="${t("Undo")}" title="${t("Undo")}" disabled>${icon("undo")}</button>
           <button type="button" class="quiet" id="redo-note" aria-label="${t("Redo")}" title="${t("Redo")}" disabled>${icon("redo")}</button>
           <button type="button" class="quiet" id="download-note" disabled>${t("Download text (.txt)")}</button>
+          <button type="button" class="quiet" id="find-note" aria-label="${t("Find and replace")}" title="${t("Find and replace")}" disabled>${icon("search")}</button>
           <details id="note-view" class="pad-menu">
             <summary>${icon("view")} ${t("View options")}</summary>
             <div class="menu-items">
@@ -251,6 +252,11 @@ ${PAD_CSS}
               </label>
               <label class="checkbox-field"><input type="checkbox" id="word-wrap" checked> ${t("Word wrap")}</label>
               <label class="checkbox-field"><input type="checkbox" id="line-numbers"> ${t("Line numbers")}</label>
+              <label class="checkbox-field"><input type="checkbox" id="highlight-active-line" checked> ${t("Highlight active line")}</label>
+              <hr class="smart-menu-divider">
+              <label class="checkbox-field"><input type="checkbox" id="clickable-links" checked> ${t("Clickable links")}</label>
+              <label class="checkbox-field"><input type="checkbox" id="interactive-checklists" checked> ${t("Interactive checklists")}</label>
+              <label class="checkbox-field"><input type="checkbox" id="markdown-formatting" checked> ${t("Markdown formatting")}</label>
             </div>
           </details>
         </div>
@@ -688,6 +694,7 @@ ${access
 }
 
 const ICON_PATHS = {
+  search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
   undo: '<path d="M9 15 4 10l5-5M4 10h10a5 5 0 0 1 0 10h-3"/>',
   redo: '<path d="m15 15 5-5-5-5m5 5H10a5 5 0 0 0 0 10h3"/>',
   paste: '<path d="M9 4H6a2 2 0 0 0-2 2v14h16V6a2 2 0 0 0-2-2h-3"/><rect x="9" y="2" width="6" height="5" rx="1"/><path d="M8 12h8m-8 4h8"/>',

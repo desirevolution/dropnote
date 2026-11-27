@@ -9,3 +9,7 @@ export function initialWorkspaceView(filesLink: boolean, saved: string | null, n
   if (saved === "note" || saved === "files") return saved;
   return !noteText.trim() && fileCount > 0 ? "files" : "note";
 }
+
+export function workspacePositionKey(pad: { slug: string; createdAt: string }): string {
+  return `dropnote:editor-position:${pad.slug}:${pad.createdAt}`;
+}

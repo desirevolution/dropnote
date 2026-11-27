@@ -5,7 +5,9 @@ import { defaultKeymap } from "@codemirror/commands";
 import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
 
 import { t } from "./i18n.js";
-import { noteLinkExtension } from "./note-link-extension.js";
+import { createSmartNote } from "./smart-note.js";
+import { createNoteSearch } from "./note-search.js";
+import { editorPosition } from "../src/smart-note.ts";
 
 const colors = ["#cf4c73", "#478bf3", "#3d9b6d", "#cb7723", "#9061dd", "#2098a9"];
 
@@ -34,7 +36,7 @@ class Cursor extends WidgetType {
   }
 }
 
-export function initNoteEditor(note, { onText, onCursor, onHistory }) {
+export function initNoteEditor(note, { onText, onCursor, onHistory, positionStorage }) {
   const setMarkers = StateEffect.define();
   const editing = new Compartment();
   const wrapping = new Compartment();
@@ -56,6 +58,49 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
   let timer;
   let visibleCursor = false;
   const undoManager = new Y.UndoManager(note);
+  const isolatedEdit = run => {
+    undoManager.stopCapturing();
+    try { run(); } finally { undoManager.stopCapturing(); }
+  };
+  const smart = createSmartNote({ onEdit: isolatedEdit, status: document.getElementById("note-clipboard-status") });
+  const search = createNoteSearch({ onEdit: isolatedEdit });
+  let positionReady = false, positionTimer, restoring = false, scrollPosition = [0, 0], positionFrame;
+  function visible() { return editor.dom.getClientRects().length > 0 && !editor.dom.closest("[hidden]"); }
+  function captureScroll() {
+    if (positionReady && !restoring && visible()) scrollPosition = [editor.scrollDOM.scrollLeft, editor.scrollDOM.scrollTop];
+  }
+  function persistPosition() {
+    clearTimeout(positionTimer); positionTimer = undefined;
+    if (!positionReady) return;
+    captureScroll();
+    const { anchor, head } = editor.state.selection.main;
+    positionStorage?.write(JSON.stringify({ anchor, head, left: scrollPosition[0], top: scrollPosition[1] }));
+  }
+  function queuePosition() {
+    if (positionReady && !restoring && !positionTimer) positionTimer = setTimeout(persistPosition, 180);
+  }
+  function restoreScroll() {
+    if (!positionReady || !visible()) return;
+    restoring = true;
+    cancelAnimationFrame(positionFrame);
+    editor.requestMeasure();
+    positionFrame = requestAnimationFrame(() => {
+      editor.requestMeasure({ read: () => null, write: () => {
+        if (visible()) editor.scrollDOM.scrollTo(...scrollPosition);
+        restoring = false;
+      } });
+    });
+  }
+  function activatePosition() {
+    if (positionReady) return;
+    const saved = editorPosition(positionStorage?.read() ?? null, editor.state.doc.length);
+    if (saved) {
+      scrollPosition = [saved.left, saved.top];
+      editor.dispatch({ selection: { anchor: saved.anchor, head: saved.head } });
+    }
+    positionReady = true;
+    restoreScroll();
+  }
   function updateHistory() {
     onHistory(undoManager.canUndo(), undoManager.canRedo());
   }
@@ -125,7 +170,8 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
       gutters.of([]),
       EditorView.contentAttributes.of({ "aria-labelledby": "note-title", spellcheck: "false", tabindex: "0" }),
       placeholder(t("Write or paste text here…")),
-      noteLinkExtension,
+      smart.extension,
+      search.extension,
       keymap.of([
         ...yUndoManagerKeymap.map((binding) => ({
           ...binding,
@@ -137,6 +183,7 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
       markers,
       EditorView.updateListener.of((update) => {
         if (update.docChanged) onText(update.state.doc.toString());
+        if (update.docChanged || update.selectionSet) queuePosition();
         if (update.docChanged || update.selectionSet || update.focusChanged) {
           queueCursor();
           if (update.focusChanged || (keyboardHeight !== undefined && (update.selectionSet || update.docChanged))) queueViewportUpdate();
@@ -146,6 +193,9 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
     ],
   });
   onText(note.toString());
+  editor.scrollDOM.addEventListener("scroll", queuePosition, { passive: true });
+  window.addEventListener("pagehide", persistPosition);
+  document.addEventListener("visibilitychange", persistPosition);
 
   function focusEnd() {
     if (!writable) return;
@@ -158,7 +208,7 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
     if (!writable || event.defaultPrevented || event.button !== 0 ||
         event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
     const target = event.target;
-    if (target.closest(".cm-line, .cm-gutters, button, a, input")) return;
+    if (target.closest(".cm-line, .cm-gutters, .smart-search-panel, button, a, input, label")) return;
 
     const scroller = editor.scrollDOM;
     if (scroller.contains(target)) {
@@ -229,16 +279,12 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
   document.addEventListener("visibilitychange", queueCursor);
   window.addEventListener("blur", queueCursor);
 
-  let scrollPosition;
   return {
-    saveScrollPosition() {
-      scrollPosition = [editor.scrollDOM.scrollLeft, editor.scrollDOM.scrollTop];
-    },
-    restoreScrollPosition() {
-      if (!scrollPosition) return;
-      editor.scrollDOM.scrollTo(...scrollPosition);
-      editor.requestMeasure();
-    },
+    activatePosition,
+    saveScrollPosition: persistPosition,
+    restoreScrollPosition: restoreScroll,
+    setSmartOption(name, enabled) { smart.configure(editor, { [name]: enabled }); },
+    openSearch() { search.open(editor); },
     requestMeasure() {
       editor.requestMeasure();
     },
@@ -294,6 +340,11 @@ export function initNoteEditor(note, { onText, onCursor, onHistory }) {
       draw();
     },
     destroy() {
+      persistPosition();
+      cancelAnimationFrame(positionFrame);
+      editor.scrollDOM.removeEventListener("scroll", queuePosition);
+      window.removeEventListener("pagehide", persistPosition);
+      document.removeEventListener("visibilitychange", persistPosition);
       clearTimeout(timer);
       clearInterval(heartbeat);
       cancelAnimationFrame(viewportFrame);

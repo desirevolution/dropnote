@@ -1,4 +1,7 @@
-import { noteLinks } from "../src/note-links.ts";
+import { EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { createSmartNote } from "./smart-note.js";
+import { createNoteSearch } from "./note-search.js";
 import { decryptAttachment } from "./encrypted-attachments.js";
 import { listedGuestFiles, openGuestSnapshot } from "./guest-snapshot.js";
 import { t } from "./i18n.js";
@@ -18,12 +21,18 @@ if (opening) {
   const path = location.pathname.replace(/\/$/, "");
   const unavailable = t("This guest link is unavailable.");
   const transfers = new AbortController();
-  let expiryTimer;
+  let expiryTimer, noteEditor, rawNote = "";
+  const smart = createSmartNote({ status, options: { activeLine: false } });
+  const search = createNoteSearch();
+  const guestOptions = () => ({ markdown: $("guest-markdown").checked, links: $("guest-links").checked, checklists: $("guest-checklists").checked });
 
   function expire() {
     clearTimeout(expiryTimer);
     transfers.abort();
     $("guest-content").hidden = true;
+    noteEditor?.destroy();
+    noteEditor = undefined;
+    rawNote = "";
     $("guest-note").replaceChildren();
     $("guest-files").replaceChildren();
     $("guest-name").textContent = "";
@@ -117,21 +126,14 @@ if (opening) {
       const data = await result.json();
       const content = key ? await openGuestSnapshot(key, data.snapshot) : data;
       signal.throwIfAborted();
-      const note = $("guest-note");
-      const fragment = document.createDocumentFragment();
-      let offset = 0;
-      for (const link of noteLinks(content.note)) {
-        fragment.append(content.note.slice(offset, link.from));
-        const anchor = document.createElement("a");
-        anchor.href = link.href;
-        anchor.target = "_blank";
-        anchor.rel = "noopener noreferrer";
-        anchor.textContent = content.note.slice(link.from, link.to);
-        fragment.append(anchor);
-        offset = link.to;
-      }
-      fragment.append(content.note.slice(offset));
-      note.replaceChildren(fragment);
+      rawNote = content.note;
+      noteEditor?.destroy();
+      noteEditor = new EditorView({ parent: $("guest-note"), doc: rawNote, extensions: [
+        EditorState.readOnly.of(true), EditorView.editable.of(false), EditorView.lineWrapping,
+        EditorView.contentAttributes.of({ tabindex: "0", "aria-labelledby": "guest-note-title" }),
+        smart.extension, search.extension,
+      ] });
+      smart.configure(noteEditor, guestOptions());
       const allowedIds = key ? new Set(data.fileIds) : null;
       const entries = listedGuestFiles(content.files).reverse()
         .filter(({ blobId }) => !allowedIds || allowedIds.has(blobId));
@@ -157,8 +159,9 @@ if (opening) {
         return row;
       }));
       $("guest-no-files").hidden = entries.length > 0;
-      $("guest-copy").disabled = !$("guest-note").textContent;
+      $("guest-copy").disabled = !rawNote;
       $("guest-content").hidden = false;
+      noteEditor.requestMeasure();
       $("guest-locked").hidden = true;
       field.value = "";
       expiryTimer = setTimeout(expire, Math.max(0, date.getTime() - Date.now()));
@@ -170,7 +173,9 @@ if (opening) {
     }
   }
 
-  $("guest-copy").addEventListener("click", () => void copyText($("guest-note").textContent, status, t("Text copied.")));
+  $("guest-copy").addEventListener("click", () => void copyText(rawNote, status, t("Text copied.")));
+  $("guest-find").addEventListener("click", () => { if (noteEditor) search.open(noteEditor); });
+  for (const id of ["guest-markdown", "guest-links", "guest-checklists"]) $(id).addEventListener("change", () => { if (noteEditor) smart.configure(noteEditor, guestOptions()); });
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     void open(field.value);

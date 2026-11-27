@@ -1,3 +1,4 @@
+import { SMART_NOTE_CSS } from "./smart-note-styles.ts";
 import type { Language } from "./locale.ts";
 import { SHARE_FRAGMENT_SCRIPT, STRIP_SHARE_FRAGMENT_SCRIPT } from "./share-fragment.ts";
 import { translate } from "./translations.ts";
@@ -13,6 +14,8 @@ export function renderGuestPage(language: Language, opening?: { encryption?: { s
 <title>Dropnote · ${t("Guest access")}</title>
 <script>${opening && !opening.encryption ? SHARE_FRAGMENT_SCRIPT : STRIP_SHARE_FRAGMENT_SCRIPT}</script>
 <style>
+${SMART_NOTE_CSS}
+[hidden] { display: none !important; }
 :root { color-scheme: light dark; font: 16px/1.5 system-ui, sans-serif; }
 body { margin: 0; background: Canvas; color: CanvasText; }
 main { width: min(46rem, calc(100% - 2rem)); margin: clamp(1rem, 6vh, 4rem) auto; }
@@ -24,7 +27,13 @@ label { display: block; margin-bottom: .3rem; }
 input, button { font: inherit; padding: .5rem .7rem; }
 input { box-sizing: border-box; width: min(22rem, 100%); margin-bottom: .5rem; }
 button { cursor: pointer; }
-#guest-note { box-sizing: border-box; width: 100%; min-height: 9rem; max-height: 65vh; overflow: auto; resize: vertical; padding: .5rem .7rem; border: 1px solid GrayText; margin: 0 0 .5rem; font: inherit; font-family: ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.guest-view-options { display: inline-block; margin: .25rem .5rem; }
+.guest-view-options summary { cursor: pointer; }
+.guest-view-option input { width: auto; margin: 0; }
+#guest-note { box-sizing: border-box; width: 100%; border: 1px solid GrayText; margin: 0 0 .5rem; }
+#guest-note .cm-editor { height: min(45vh, 30rem); min-height: 9rem; }
+#guest-note .cm-scroller { font: .95rem/1.65 ui-monospace, monospace; }
+#guest-note .cm-content { padding: .5rem .7rem; }
 ul { padding: 0; }
 li { list-style: none; padding: .65rem 0; border-bottom: 1px solid GrayText; display: flex; align-items: center; justify-content: space-between; gap: .75rem; overflow-wrap: anywhere; }
 li span { min-width: 0; }
@@ -49,7 +58,14 @@ ${opening ? `<section id="guest-locked">
   <p>${t(opening.encryption ? "This link shares an encrypted snapshot. Later changes are not included." : "This link shows the current state when opened.")}</p>
   <p id="guest-captured" hidden></p>
   <h2 id="guest-note-title">${t("Note")}</h2>
-  <pre id="guest-note" role="region" aria-labelledby="guest-note-title" tabindex="0"></pre>
+  <div id="guest-note" role="region" aria-labelledby="guest-note-title"></div>
+  <button id="guest-find" type="button">${t("Find")}</button>
+  <details class="guest-view-options">
+    <summary>${t("View options")}</summary>
+    <label class="guest-view-option"><input id="guest-markdown" type="checkbox" checked> ${t("Markdown formatting")}</label>
+    <label class="guest-view-option"><input id="guest-links" type="checkbox" checked> ${t("Clickable links")}</label>
+    <label class="guest-view-option"><input id="guest-checklists" type="checkbox" checked> ${t("Interactive checklists")}</label>
+  </details>
   <button id="guest-copy" type="button">${t("Copy text")}</button>
   <h2>${t("Files")}</h2>
   <ul id="guest-files"></ul>
