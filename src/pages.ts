@@ -1,3 +1,5 @@
+import { THEME_CSS, THEME_RESTORE_SCRIPT } from "./theme.ts";
+import { renderEditorHelp, EDITOR_HELP_CSS } from "./editor-help-page.ts";
 import { STRIP_SHARE_FRAGMENT_SCRIPT } from "./share-fragment.ts";
 /**
  * Pad pages: every Pad — the Default Pad at the site root and additional
@@ -18,29 +20,6 @@ import { MAX_DISPLAY_NAME_LENGTH, spaceLabel } from "./space-label.ts";
  * choice (localStorage "theme") pins one palette via the data-theme
  * attribute. Deliberately dumb — two tiny inline scripts, no framework.
  */
-const LIGHT_PROPERTIES =
-  "--bg: #f7f8fa; --surface: #ffffff; --fg: #20262e; --muted: #545f6c; --border: #d9dee5; --border-strong: #8b98a8; --panel: #eef1f5; --accent: #305a83; --accent-hover: #244769; --on-accent: #fff; --accent-soft: #e7eff8; --error: #a12636; --positive: #226449;";
-const DARK_PROPERTIES =
-  "--bg: #181c21; --surface: #20252b; --fg: #e8edf2; --muted: #b3bfcc; --border: #39434e; --border-strong: #788899; --panel: #2a323b; --accent: #9ec2e4; --accent-hover: #bedbf5; --on-accent: #152536; --accent-soft: #283d52; --error: #ff9ca7; --positive: #94d5b2;";
-
-const THEME_CSS = `
-  :root { color-scheme: light; ${LIGHT_PROPERTIES} }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme]) { color-scheme: dark; ${DARK_PROPERTIES} }
-  }
-  :root[data-theme="dark"] { color-scheme: dark; ${DARK_PROPERTIES} }
-  :root[data-theme="light"] { color-scheme: light; ${LIGHT_PROPERTIES} }
-`;
-
-/** Applies a saved theme choice before first paint, so there is no flash. */
-const THEME_RESTORE_SCRIPT = `
-  try {
-    var theme = localStorage.getItem("theme");
-    if (theme === "light" || theme === "dark") {
-      document.documentElement.setAttribute("data-theme", theme);
-    }
-  } catch (e) { /* storage unavailable — follow prefers-color-scheme */ }`;
-
 /** The toggle button's behavior: swap the palette and persist the choice. */
 const THEME_TOGGLE_SCRIPT = `
   (function () {
@@ -97,6 +76,7 @@ export function renderPadPage(pad: PadRecord, options: PadPageOptions): string {
   // The Note content lives in the Pad's Live-Sync document (ADR-0002) and is
   // replayed into the editor by the client; the page itself starts empty.
   const metadata = JSON.stringify({
+    spaceId: pad.spaceId,
     slug: publicPadSlug(pad.slug),
     displayName: pad.displayName ?? null,
     createdAt: pad.createdAt,
@@ -127,6 +107,7 @@ export function renderPadPage(pad: PadRecord, options: PadPageOptions): string {
 <style>
 ${THEME_CSS}
 ${PAD_CSS}
+${EDITOR_HELP_CSS}
 </style>
 </head>
 <body>
@@ -136,6 +117,10 @@ ${PAD_CSS}
       <a class="brand" href="${PROJECT_URL}" title="${t("Dropnote on GitHub")}" aria-label="${t("Dropnote on GitHub")}"><span class="brand-mark">${icon("pad")}</span>Dropnote</a>
     </div>
     <nav class="actions" aria-label="${t("Spaces")}">
+      <span class="space-history-actions">
+      <button type="button" class="quiet icon-button" id="space-back" aria-label="${t("Previous space")}" title="${t("Previous space")}" disabled>${icon("back")}</button>
+      <button type="button" class="quiet icon-button" id="space-forward" aria-label="${t("Next space")}" title="${t("Next space")}" disabled>${icon("forward")}</button>
+      </span>
       <a href="/" id="home-link" class="home-link" aria-label="${t("Home")}">${icon("home")} ${t("Home")}</a>
       <button type="button" data-open-dialog="owned-spaces-dialog" aria-haspopup="dialog">${t("My spaces")}${username ? ` <span id="access-request-badge" class="request-count" role="img" hidden></span> <span id="shared-space-badge" class="request-count" role="img" hidden></span>` : ""}</button>
       <details class="pad-menu" id="appearance-menu" data-action-menu>
@@ -177,6 +162,8 @@ ${PAD_CSS}
         <summary aria-label="${t("Space actions")}" title="${t("Space actions")}">⋯</summary>
         <div class="menu-items">
           ${username && !canManage && !fixed ? `<button type="button" id="remember-pad">${t("Bookmark space")}</button>` : ""}
+          <button type="button" id="copy-space-reference">${t("Copy page reference")}</button>
+          <button type="button" id="copy-downloads-reference">${t("Copy downloads reference")}</button>
           <button type="button" id="set-start-pad">${t("Set as start page")}</button>
           ${isEncrypted ? `<button type="button" id="lock-pad" hidden>${t("Lock space")}</button>` : ""}
           ${!fixed && canManage ? `<button type="button" id="rename-space" data-open-dialog="rename-dialog" aria-haspopup="dialog" disabled>${t("Rename space")}</button>` : ""}
@@ -223,6 +210,11 @@ ${PAD_CSS}
     <a id="access-toast-action" href="/"></a>
     <button id="access-toast-close" type="button" class="icon-button quiet" aria-label="${t("Close")}">${icon("close")}</button>
   </aside>
+  <aside id="reference-toast" class="access-toast" hidden>
+    <span id="reference-toast-text" role="status"></span>
+    <button id="reference-toast-close" type="button" class="icon-button quiet" aria-label="${t("Close")}">${icon("close")}</button>
+  </aside>
+  <p id="note-clipboard-status" class="editor-toast" role="status"></p>
   <p id="pad-notice" class="pad-notice" role="status" hidden></p>
   <p id="sync-error" role="alert" hidden></p>
   <div class="workspace" id="workspace"${isEncrypted ? " hidden" : ""}>
@@ -233,14 +225,15 @@ ${PAD_CSS}
       </div>
       <div class="actions workspace-actions">
         <div class="actions" id="note-tools">
-          <button type="button" class="quiet" id="paste-note" disabled>${icon("paste")} ${t("Append text")}</button>
-          <button type="button" class="quiet" id="copy-note" disabled>${icon("copy")} ${t("Copy text")}</button>
-          <button type="button" class="quiet" id="undo-note" aria-label="${t("Undo")}" title="${t("Undo")}" disabled>${icon("undo")}</button>
-          <button type="button" class="quiet" id="redo-note" aria-label="${t("Redo")}" title="${t("Redo")}" disabled>${icon("redo")}</button>
-          <button type="button" class="quiet" id="download-note" disabled>${t("Download text (.txt)")}</button>
-          <button type="button" class="quiet" id="find-note" aria-label="${t("Find and replace")}" title="${t("Find and replace")}" disabled>${icon("search")}</button>
+          <div class="editor-direct-actions">
+          <button type="button" class="quiet" id="undo-note" aria-label="${t("Undo")}" title="${t("Undo")} (Ctrl/Cmd+Z)" aria-keyshortcuts="Control+z Meta+z" disabled>${icon("undo")}<span class="editor-action-label">${t("Undo")}</span></button>
+          <button type="button" class="quiet" id="redo-note" aria-label="${t("Redo")}" title="${t("Redo")}" disabled>${icon("redo")}<span class="editor-action-label">${t("Redo")}</span></button>
+          <button type="button" class="quiet" id="copy-note" aria-label="${t("Copy text")}" title="${t("Copy text")}" disabled>${icon("copy")} <span class="editor-action-label">${t("Copy text")}</span></button>
+          <button type="button" class="quiet" id="paste-note" aria-label="${t("Append text")}" title="${t("Append text")}" disabled>${icon("paste")} <span class="editor-action-label">${t("Append text")}</span></button>
+          <button type="button" class="quiet" id="insert-reference" aria-label="${t("Insert reference")}" title="${t("Insert reference")} (Ctrl/Cmd+K)" aria-keyshortcuts="Control+k Meta+k" disabled>${icon("link")}<span class="editor-action-label">${t("Insert reference")}</span></button>
+          <button type="button" class="quiet" id="find-note" aria-label="${t("Find and replace")}" title="${t("Find and replace")} (Ctrl/Cmd+F/H)" aria-keyshortcuts="Control+f Control+h Meta+f Meta+h" disabled>${icon("search")}<span class="editor-action-label">${t("Find and replace")}</span></button>
           <details id="note-view" class="pad-menu">
-            <summary>${icon("view")} ${t("View options")}</summary>
+            <summary aria-label="${t("View options")}" title="${t("View options")}">${icon("view")} <span class="editor-action-label">${t("View options")}</span></summary>
             <div class="menu-items">
               <label class="editor-font-option">
                 ${t("Font size")}
@@ -253,10 +246,27 @@ ${PAD_CSS}
               <label class="checkbox-field"><input type="checkbox" id="word-wrap" checked> ${t("Word wrap")}</label>
               <label class="checkbox-field"><input type="checkbox" id="line-numbers"> ${t("Line numbers")}</label>
               <label class="checkbox-field"><input type="checkbox" id="highlight-active-line" checked> ${t("Highlight active line")}</label>
+              <label class="checkbox-field"><input type="checkbox" id="show-status-bar" checked> ${t("Show status bar")}</label>
               <hr class="smart-menu-divider">
               <label class="checkbox-field"><input type="checkbox" id="clickable-links" checked> ${t("Clickable links")}</label>
               <label class="checkbox-field"><input type="checkbox" id="interactive-checklists" checked> ${t("Interactive checklists")}</label>
               <label class="checkbox-field"><input type="checkbox" id="markdown-formatting" checked> ${t("Markdown formatting")}</label>
+              <label class="checkbox-field"><input type="checkbox" id="internal-references" checked> ${t("Internal references")}</label>
+            </div>
+          </details>
+          <button type="button" class="quiet" id="editor-help" aria-label="${t("Editor help")}" title="${t("Editor help")}" aria-haspopup="dialog" disabled>${icon("help")}<span class="editor-action-label">${t("Editor help")}</span></button>
+          </div>
+          <details id="editor-more" class="pad-menu" data-action-menu>
+            <summary aria-label="${t("More actions")}" title="${t("More actions")}">${icon("more")}</summary>
+            <div class="menu-items">
+          <button type="button" class="quiet" id="download-note" disabled>${t("Download text (.txt)")}</button>
+          <details id="readable-export" class="pad-menu" data-action-menu>
+            <summary>${t("Readable export")}</summary>
+            <div class="menu-items">
+              <button type="button" class="quiet" id="copy-readable-note" disabled>${icon("copy")} ${t("Copy readable text")}</button>
+              <button type="button" class="quiet" id="download-readable-note" disabled>${t("Download readable text")}</button>
+            </div>
+          </details>
             </div>
           </details>
         </div>
@@ -280,9 +290,12 @@ ${PAD_CSS}
     <p id="attachment-error" class="attachment-error" role="alert" hidden></p>
     <ul id="attachment-uploads" aria-label="${t("Transfers")}"></ul>
     <section class="card note-card" id="note-panel" role="tabpanel" aria-labelledby="note-tab" hidden>
-      <p id="note-clipboard-status" role="status"></p>
       <h2 id="note-title" class="visually-hidden">${t("Note")}</h2>
       <div id="note"></div>
+      <div id="note-status-bar" class="editor-status-bar">
+        <span id="note-sync-slot"></span>
+        <span class="editor-metrics"><span data-metric="cursor"></span><span data-metric="selection"></span><span data-metric="words"></span><span data-metric="chars"></span></span>
+      </div>
     </section>
     <section class="card files-pane" id="files-card" role="tabpanel" aria-labelledby="files-tab" tabindex="0" hidden>
       <div class="files-body">
@@ -296,7 +309,7 @@ ${PAD_CSS}
       </div>
     </section>
     <footer class="workspace-footer">
-      <span id="sync-status" role="status">${t("Connecting…")}</span>
+      <span id="files-sync-slot"><span id="sync-status" role="status">${t("Connecting…")}</span></span>
       ${options.canEdit === false
         ? `<span>${t("Read-only access")}</span>`
         : `<label class="checkbox-field"><input type="checkbox" id="read-mode"> ${t("Read only")}</label>`}
@@ -311,6 +324,45 @@ ${PAD_CSS}
       <button type="submit" value="cancel" autofocus>${t("Cancel")}</button>
       <button type="submit" value="replace" class="primary">${t("Replace note")}</button>
     </form>
+  </dialog>
+
+  <dialog id="reference-actions" aria-labelledby="reference-action-title">
+    <header class="dialog-head"><h2 id="reference-action-title">${t("Reference")}</h2><button type="button" class="icon-button quiet" data-close-dialog aria-label="${t("Close")}">${icon("close")}</button></header>
+    <p id="reference-action-status" role="status"></p>
+    <progress id="reference-action-progress" max="1" aria-label="${t("Loading references…")}" hidden></progress>
+    <form id="reference-action-unlock" hidden>
+      <label id="reference-action-unlock-label" for="reference-action-password">${t("Passphrase")}</label>
+      <input id="reference-action-password" type="password" autocomplete="off" required>
+      <button type="submit" class="primary">${t("Unlock")}</button>
+    </form>
+    <form id="reference-alias-form" hidden>
+      <label for="reference-alias">${t("Edit display name")}</label>
+      <textarea id="reference-alias" maxlength="4096" rows="2" required></textarea>
+      <button type="submit" class="primary">${t("Apply")}</button>
+    </form>
+    <div id="reference-action-buttons" class="reference-action-buttons"></div>
+  </dialog>
+
+  ${renderEditorHelp(language)}
+
+  <dialog id="reference-picker" aria-labelledby="reference-picker-title">
+    <header class="dialog-head"><h2 id="reference-picker-title">${t("Insert reference")}</h2><button type="button" class="icon-button quiet" data-close-dialog aria-label="${t("Close")}">${icon("close")}</button></header>
+    <div class="reference-picker-controls">
+      <input id="reference-query" type="search" autocomplete="off" spellcheck="false" maxlength="160" placeholder="${t("Search pages and files…")}" aria-label="${t("Search pages and files…")}" autofocus>
+      <div class="reference-filters" role="group" aria-label="${t("Reference type")}">
+        <button type="button" data-reference-filter="all" aria-pressed="true">${t("All")}</button>
+        <button type="button" data-reference-filter="pages" aria-pressed="false">${t("Pages")}</button>
+        <button type="button" data-reference-filter="files" aria-pressed="false">${t("Files")}</button>
+      </div>
+      <p id="reference-status" role="status"></p>
+      <form id="reference-unlock" hidden>
+        <label id="reference-unlock-label" for="reference-password">${t("Passphrase")}</label>
+        <input id="reference-password" type="password" autocomplete="off" required>
+        <button type="submit" class="primary">${t("Unlock")}</button>
+        <button type="button" id="reference-unlock-cancel">${t("Cancel")}</button>
+      </form>
+      <div id="reference-results" aria-label="${t("References")}"></div>
+    </div>
   </dialog>
 
   <dialog id="new-pad-dialog" aria-labelledby="new-pad-title">
@@ -448,6 +500,7 @@ ${PAD_CSS}
       <h2 id="guest-link-title">${t("Manage guest link")}</h2>
       <button type="button" class="icon-button quiet" data-close-dialog aria-label="${t("Close")}">${icon("close")}</button>
     </header>
+    <p>${t("Private reference IDs are removed from guest notes. Their labels and other note text remain visible. Review sensitive names before sharing.")}</p>
     <p id="guest-link-description">${t(isEncrypted ? "Share an encrypted snapshot. Later changes are visible only after you replace the guest link." : "Guests see the current state each time they open this link. A guest password is required.")}</p>
     ${isEncrypted ? `<p>${t("Files deleted from the space also disappear from guest access.")}</p>` : ""}
     <p id="guest-link-state" role="status">${t("Loading…")}</p>
@@ -694,6 +747,10 @@ ${access
 }
 
 const ICON_PATHS = {
+  back: '<path d="M19 12H5m7-7-7 7 7 7"/>',
+  forward: '<path d="M5 12h14m-7-7 7 7-7 7"/>',
+  more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 1 1 4.5 2.6c-1 .6-1.5 1.4-1.5 2.4m0 3h.01"/>',
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
   undo: '<path d="M9 15 4 10l5-5M4 10h10a5 5 0 0 1 0 10h-3"/>',
   redo: '<path d="m15 15 5-5-5-5m5 5H10a5 5 0 0 0 0 10h3"/>',

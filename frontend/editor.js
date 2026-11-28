@@ -1,3 +1,10 @@
+import { initEditorMetrics, initEditorToast, initEditorToolbar } from "./editor-ui.js";
+import { initEditorHelp } from "./editor-help.js";
+import { initReferenceActions } from "./reference-actions.js";
+import { initReferenceHistory } from "./reference-history.js";
+import { initReferencePicker } from "./reference-picker.js";
+import { referenceDeleteMessage } from "./reference-deletion.js";
+import { formatReference, readableReferences } from "../src/internal-references.ts";
 import { workspaceViewKey, workspacePositionKey } from "../src/workspace-view.ts";
 import { spaceLabel } from "../src/space-label.ts";
 import * as Y from "yjs";
@@ -25,7 +32,18 @@ const syncStatus = $("sync-status");
 const syncError = $("sync-error");
 const noteCopy = $("copy-note");
 const noteClipboardStatus = $("note-clipboard-status");
+initEditorToast(noteClipboardStatus);
+const editorMetrics = initEditorMetrics($("note-status-bar"));
+const editorToolbar = initEditorToolbar($("note-tools"));
+function placeSyncStatus(view) {
+  const visible = $("show-status-bar").checked;
+  $("note-status-bar").hidden = !visible;
+  const slot = $(view === "note" && visible ? "note-sync-slot" : "files-sync-slot");
+  if (syncStatus.parentNode !== slot) slot.append(syncStatus);
+  $("files-sync-slot").hidden = slot.id !== "files-sync-slot";
+}
 const noteDownload = $("download-note");
+const readableCopy = $("copy-readable-note"), readableDownload = $("download-readable-note");
 const replaceNoteDialog = $("replace-note-dialog");
 const uploadNotice = $("upload-notice");
 const uploadNoticeText = $("upload-notice-text");
@@ -64,6 +82,35 @@ let canRedo = false;
 let lockChannel;
 let uploadNoticeTimer;
 let enteringWorkspace = false;
+const explicitView = new URLSearchParams(location.search).get("view");
+let pendingFileHighlight = new URLSearchParams(location.search).get("file");
+if (!/^[0-9a-f]{32}$/.test(pendingFileHighlight ?? "") || explicitView !== "files") pendingFileHighlight = null;
+function highlightReferenceFile(final = false) {
+  if (!pendingFileHighlight || workspace.hidden || tabs.selected !== "files" || !attachments) return;
+  if (attachments.highlightReferenceFile(pendingFileHighlight)) pendingFileHighlight = null;
+  else if (final) { pendingFileHighlight = null; referenceNotice(t("The referenced file is no longer available.")); }
+}
+let referenceNoticeTimer;
+function referenceNotice(message) {
+  clearTimeout(referenceNoticeTimer);
+  $("reference-toast-text").textContent = message;
+  $("reference-toast").hidden = false;
+  referenceNoticeTimer = setTimeout(() => { $("reference-toast").hidden = true; }, 8000);
+}
+$("reference-toast-close").addEventListener("click", () => { clearTimeout(referenceNoticeTimer); $("reference-toast").hidden = true; });
+function mayNavigate() {
+  // Native beforeunload covers browser links and history as well.
+  note?.saveScrollPosition();
+  return true;
+}
+function navigateReference(ref, address) {
+  if (ref.spaceId === metadata.spaceId) {
+    if (ref.kind === "file") pendingFileHighlight = ref.blobId;
+    if (ref.kind === "file" || ref.view === "files") tabs.showFiles();
+    else tabs.showNote();
+    highlightReferenceFile(true);
+  } else if (mayNavigate()) location.assign(address);
+}
 const desktopPointer = window.matchMedia("(pointer: fine)");
 
 function focusDesktopNote() {
@@ -74,7 +121,7 @@ function focusDesktopNote() {
 const tabKey = workspaceViewKey(metadata);
 const positionKey = workspacePositionKey(metadata);
 const tabs = initWorkspaceTabs({
-  filesLink: new URLSearchParams(location.search).get("view") === "files",
+  filesLink: explicitView === "files", noteLink: explicitView === "note",
   readSelection: () => localValue(tabKey),
   saveSelection: (view) => saveLocal(tabKey, view),
   onNoteClick: focusDesktopNote,
@@ -82,23 +129,51 @@ const tabs = initWorkspaceTabs({
     $("image-paste-fallback").hidden = true;
     $("image-paste-status").hidden = true;
     $("image-paste-status").textContent = "";
-    if (previous === "note") note?.saveScrollPosition();
+    if (previous === "note") { note?.saveScrollPosition(); referencePicker.close(); referenceActions.close(); editorHelp.close(); }
   },
   afterChange(view) {
+    placeSyncStatus(view);
+    editorToolbar.close();
     if (view === "note") note?.restoreScrollPosition();
     else {
       hideUploadNotice();
       $("note-view").open = false;
+      $("readable-export").open = false;
+      highlightReferenceFile();
     }
   },
 });
 
 setStorageUser(metadata.username);
-initPadActions();
+const padActions = initPadActions();
 const guestLinks = initGuestLinks(api, encryption, () => proof, () => guestKey,
-  () => connectionState === "writable" || connectionState === "readonly" ? doc : null);
-initSpaceAccess(api, deleteSpace, metadata.unreadGrantId);
+  () => connectionState === "writable" || connectionState === "readonly" ? doc : null, metadata.spaceId);
+initSpaceAccess(api, deleteSpace, metadata.unreadGrantId, () => { attachments?.clearReferenceCache(); referenceActions.clear(); }, list => referenceActions.spaces(list));
 const navigation = initPadNavigation(metadata);
+const referenceActions = initReferenceActions({ metadata, editor: () => note, attachments: () => attachments,
+  picker: () => referencePicker, canRead: () => !workspace.hidden && tabs.selected === "note" && ["writable", "readonly"].includes(connectionState),
+  canEdit: () => writable, notice: referenceNotice, navigate: navigateReference, onRestoreFocus: focusDesktopNote });
+function pendingBeforeUnload(event) { event.preventDefault(); event.returnValue = ""; }
+function setPendingChanges(pending) {
+  changesPending = pending;
+  if (pending) window.addEventListener("beforeunload", pendingBeforeUnload);
+  else window.removeEventListener("beforeunload", pendingBeforeUnload);
+}
+const referencePicker = initReferencePicker({ metadata, editor: () => note, attachments: () => attachments,
+  canInsert: () => writable && tabs.selected === "note" && !workspace.hidden,
+  create: padActions.createForReference, cancelCreate: padActions.cancelReferenceCreation,
+  notice, onRestoreFocus: focusDesktopNote, onSpaces: list => referenceActions.spaces(list), onMetadata: space => referenceActions.remember(space) });
+const editorHelp = initEditorHelp({ editor: () => note,
+  canRead: () => !workspace.hidden && tabs.selected === "note" && ["writable", "readonly"].includes(connectionState),
+  canEdit: () => writable, picker: () => referencePicker,
+  readTab: () => localValue("dropnote:editor-help-tab"), saveTab: tab => saveLocal("dropnote:editor-help-tab", tab),
+  notice: referenceNotice, restoreFocus: focusDesktopNote });
+$("editor-help").addEventListener("click", () => editorHelp.open());
+$("insert-reference").addEventListener("click", () => referencePicker.open());
+for (const [id, view] of [["copy-space-reference", "note"], ["copy-downloads-reference", "files"]]) {
+  $(id).addEventListener("click", () => copyText(formatReference({ kind: "space", spaceId: metadata.spaceId, view,
+    label: spaceLabel(metadata.slug, metadata.displayName), alias: false }), $("copy-status"), t("Reference copied.")));
+}
 
 $("copy-link").addEventListener("click", () => copyText(padUrl, $("copy-status"), t(metadata.guestEnabled ? "Internal link copied." : "Link copied.")));
 $("copy-files-link").addEventListener("click", () => copyText(filesUrl.href, $("copy-status"), t("Files link copied.")));
@@ -140,10 +215,11 @@ const viewPreferences = [
     value: () => lineNumbers.checked ? "1" : "0",
     apply: () => note?.setLineNumbers(lineNumbers.checked),
   },
-  ...[["links", "clickable-links"], ["markdown", "markdown-formatting"], ["checklists", "interactive-checklists"], ["activeLine", "highlight-active-line"]].map(([name, id]) => {
+  { key: "dropnote:note-show-status-bar", control: $("show-status-bar"), read: value => { $("show-status-bar").checked = value !== "0"; }, value: () => $("show-status-bar").checked ? "1" : "0", apply: () => placeSyncStatus(tabs.selected) },
+  ...[["links", "clickable-links"], ["markdown", "markdown-formatting"], ["checklists", "interactive-checklists"], ["activeLine", "highlight-active-line"], ["references", "internal-references"]].map(([name, id]) => {
     const control = $(id);
     return { key: `dropnote:note-${id}`, control, read: value => { control.checked = value !== "0"; },
-      value: () => control.checked ? "1" : "0", apply: () => note?.setSmartOption(name, control.checked) };
+      value: () => control.checked ? "1" : "0", apply: () => { if (name === "activeLine") noteMount.dataset.activeLine = String(control.checked); note?.setSmartOption(name, control.checked); } };
   }),
 ];
 function restoreViewPreference(preference) {
@@ -218,23 +294,28 @@ $("paste-note").addEventListener("click", async () => {
     updateActions();
   }
 });
-noteCopy.addEventListener("click", () => copyText(noteText, noteClipboardStatus, t("Text copied.")));
+function canExportNote() { return !!noteText && !workspace.hidden; }
+function readableNote() { return readableReferences(noteText, referenceActions.label); }
+noteCopy.addEventListener("click", () => { if (canExportNote()) void copyText(noteText, noteClipboardStatus, t("Text copied.")); });
+readableCopy.addEventListener("click", () => { if (canExportNote()) void copyText(readableNote(), noteClipboardStatus, t("Readable text copied.")); });
 
-noteDownload.addEventListener("click", () => {
-  if (!noteText || workspace.hidden) return;
+function downloadNote(readable = false) {
+  if (!canExportNote()) return;
 
   lastExportTime = Math.max(Date.now(), lastExportTime + 1);
-  const blob = new Blob([noteText], { type: "text/plain;charset=utf-8" });
+  const blob = new Blob([readable ? readableNote() : noteText], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${metadata.slug}-${lastExportTime}.txt`;
+  link.download = `${metadata.slug}-${lastExportTime}${readable ? "-readable" : ""}.txt`;
   try {
     link.click();
   } finally {
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
-});
+}
+noteDownload.addEventListener("click", () => downloadNote());
+readableDownload.addEventListener("click", () => downloadNote(true));
 
 document.addEventListener("paste", (event) => {
   if (!canReplaceNote() || event.defaultPrevented || document.querySelector("dialog[open]")) return;
@@ -292,7 +373,7 @@ function showUploadNotice() {
 }
 
 function writeHeaders() {
-  const headers = {};
+  const headers = metadata.spaceId ? { "x-space-id": metadata.spaceId } : {};
   if (proof) headers["x-pad-proof"] = proof;
   if (writeToken) headers.authorization = `Bearer ${writeToken}`;
   return headers;
@@ -310,8 +391,10 @@ function showExpiry(expiresAt) {
 }
 
 function updateActions() {
-  noteCopy.disabled = noteDownload.disabled = !noteText;
+  noteCopy.disabled = noteDownload.disabled = readableCopy.disabled = readableDownload.disabled = !canExportNote();
   const states = {
+    "insert-reference": !writable,
+    "editor-help": connectionState !== "writable" && connectionState !== "readonly",
     "find-note": connectionState !== "writable" && connectionState !== "readonly",
     "paste-note": !writable || readingClipboard,
     "undo-note": !writable || !canUndo,
@@ -338,6 +421,8 @@ function setState(state) {
     tabs.showInitial(noteText, fileCount);
   }
   connectionState = state;
+  if (!active) referenceActions.close();
+  else { highlightReferenceFile(true); referenceActions.refresh(); }
   guestLinks?.refreshControls();
   applyEditingState();
 
@@ -352,11 +437,14 @@ function setState(state) {
 }
 
 function applyEditingState() {
+  const wasWritable = writable;
   writable = connectionState === "writable" && !readMode;
-  if (!writable) cancelNoteReplacement();
+  if (!writable) { cancelNoteReplacement(); referencePicker.close(); if (wasWritable) referenceActions.close(); }
   $("unlock-editing").hidden = readMode || connectionState !== "readonly" || !metadata.pinProtected || metadata.canEdit === false;
   updateSyncStatus();
   note?.setEditing(writable);
+  editorToolbar.readOnly(connectionState === "readonly" || readMode);
+  editorHelp.refresh();
   attachments?.setEditing(writable);
   updateActions();
 }
@@ -364,10 +452,10 @@ function applyEditingState() {
 function updateSyncStatus() {
   const active = connectionState === "writable" || connectionState === "readonly";
   const failed = connectionState === "unreadable" || connectionState === "missing";
-  const showPending = !writable && changesPending;
+  const showPending = changesPending;
   syncStatus.dataset.state = failed ? "error" : active && !showPending ? "live" : "pending";
   const label = {
-    writable: t(readMode ? "Read only" : "Connected"),
+    writable: t(readMode ? "Read only" : "Synced"),
     readonly: t("Read only"),
     connecting: t("Connecting…"),
     reconnecting: t("Connection lost · reconnecting…"),
@@ -375,8 +463,8 @@ function updateSyncStatus() {
     missing: t("Space unavailable"),
     locked: t("Locked"),
   }[connectionState];
-  const status = showPending ? `${label} · ${t("Changes pending")}` : label;
-  if (syncStatus.textContent !== status) syncStatus.textContent = status;
+  const status = showPending ? (writable ? t("Changes pending") : `${label} · ${t("Changes pending")}`) : label;
+  if (syncStatus.textContent !== status) { syncStatus.textContent = status; syncStatus.title = status; }
 }
 
 function showSyncError(message) {
@@ -422,7 +510,10 @@ async function openPad(key = null) {
   showSyncError("");
   doc = new Y.Doc();
   note = initNoteEditor(doc.getText("note"), {
+    onReference: range => referencePicker.open(range),
+    references: referenceActions,
     positionStorage: { read: () => localValue(positionKey), write: value => saveLocal(positionKey, value) },
+    onMetrics: editorMetrics,
     onText(value) {
       noteText = value;
       updateActions();
@@ -438,12 +529,14 @@ async function openPad(key = null) {
   });
   for (const preference of viewPreferences) preference.apply();
   attachments = initAttachments(doc, metadata.slug, {
-    key,
+    key, spaceId: metadata.spaceId,
     writeHeaders,
     onUploaded: showUploadNotice,
     onCount(count) {
       fileCount = count;
       tabs.setFileCount(count);
+      referenceActions.refresh();
+      highlightReferenceFile();
       updateActions();
     },
   });
@@ -455,8 +548,8 @@ async function openPad(key = null) {
       if (state === "unreadable") showSyncError(t("The space data could not be read. Reload the page to try again."));
     },
     onPendingChange(pending) {
-      changesPending = pending;
-      if (!writable) updateSyncStatus();
+      setPendingChanges(pending);
+      updateSyncStatus();
     },
     onPresence: (event) => note.presence(event),
     onExpiry: showExpiry,
@@ -468,6 +561,10 @@ function closeWorkspace() {
   openingSecret = null;
   qr.setPassphrase(null);
   generation += 1;
+  referencePicker.close();
+  editorHelp.close();
+  referenceActions.clear();
+  clearTimeout(referenceNoticeTimer); $("reference-toast").hidden = true; $("reference-toast-text").textContent = "";
   cancelNoteReplacement();
   clearTimeout(pinTimer);
   sync?.stop();
@@ -476,6 +573,7 @@ function closeWorkspace() {
   doc?.destroy();
   sync = note = attachments = doc = undefined;
   noteText = "";
+  editorMetrics(null);
   fileCount = 0;
   tabs.setFileCount(0);
   hideUploadNotice();
@@ -485,9 +583,11 @@ function closeWorkspace() {
     if ($(id)?.open) $(id).close();
   }
   workspace.hidden = true;
+  editorToolbar.close();
   noteClipboardStatus.textContent = "";
   canUndo = canRedo = false;
-  changesPending = false;
+  updateActions();
+  setPendingChanges(false);
 }
 
 function lockPad(announce) {
@@ -577,7 +677,10 @@ $("clear-note")?.addEventListener("click", () => {
   if (writable && window.confirm(t("Clear all text in Default?"))) note.clear();
 });
 $("clear-files")?.addEventListener("click", async () => {
-  if (!writable || clearing || !window.confirm(t("Remove all {count} files from Default?", { count: fileCount }))) return;
+  if (!writable || clearing) return;
+  const ids = new Set(attachments.localReferenceFiles().map(file => file.blobId));
+  if (!window.confirm(referenceDeleteMessage(t("Remove all {count} files from Default?", { count: fileCount }),
+    doc.getText("note").toString(), metadata.spaceId, ids))) return;
   clearing = true;
   updateActions();
   try {
@@ -604,10 +707,11 @@ $("delete-pad")?.addEventListener("click", async () => {
 });
 
 async function deleteSpace(space) {
-  if (!window.confirm(t("Delete “{name}”, its note and all its files?", { name: spaceLabel(space.slug, space.displayName) }))) return false;
+  const text = !workspace.hidden && ["writable", "readonly"].includes(connectionState) ? doc?.getText("note").toString() ?? "" : "";
+  if (!window.confirm(referenceDeleteMessage(t("Delete “{name}”, its note and all its files?", { name: spaceLabel(space.slug, space.displayName) }), text, space.spaceId))) return false;
   const response = await fetch(`/api/pads/${encodeURIComponent(space.slug)}`, {
     method: "DELETE",
-    headers: { "x-pad-created-at": space.createdAt },
+    headers: { "x-pad-created-at": space.createdAt, ...(space.spaceId ? { "x-space-id": space.spaceId } : {}) },
   });
   if (!response.ok) throw new Error(await responseError(response));
   if (space.slug === metadata.slug && space.createdAt === metadata.createdAt) closeWorkspace();
@@ -642,6 +746,7 @@ $("rename-form")?.addEventListener("submit", async (event) => {
     if (!response.ok) throw new Error(await responseError(response));
     const result = await response.json();
     metadata.displayName = result.displayName;
+    referenceActions.remember(metadata);
     const name = spaceLabel(metadata.slug, metadata.displayName);
     $("space-heading").textContent = name;
     document.title = `${name} – Dropnote`;
@@ -694,6 +799,7 @@ async function responseError(response) {
 
 async function start() {
   if (await openPersonalStartPad()) return;
+  initReferenceHistory({ beforeNavigate: mayNavigate, key: storageKey("dropnote:reference-history") });
   navigation.refresh();
   showExpiry(metadata.expiresAt);
   if (!encrypted) return openPad();
@@ -734,6 +840,8 @@ async function start() {
   }
   showUnlock();
 }
+
+window.addEventListener("pagehide", () => { referencePicker.close(); editorHelp.close(); attachments?.clearReferenceCache(); referenceActions.clear(); });
 
 if (encrypted) window.addEventListener("pagehide", () => {
   openingSecret = null;

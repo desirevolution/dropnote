@@ -1,3 +1,6 @@
+import { initEditorMetrics, initEditorToast } from "./editor-ui.js";
+import { initEditorHelp } from "./editor-help.js";
+import { guestNoteReferences, readableGuestNote, sanitizeGuestNote } from "../src/internal-references.ts";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { createSmartNote } from "./smart-note.js";
@@ -18,21 +21,54 @@ if (opening) {
   const field = $("guest-passphrase");
   const submit = $("guest-open");
   const status = $("guest-message");
+  const noteToast = $("guest-note-toast");
+  initEditorToast(noteToast);
+  const metrics = initEditorMetrics($("guest-status-bar"), { guest: true });
+  const statusOption = $("guest-status-option");
+  try { statusOption.checked = localStorage.getItem("dropnote:guest-show-status-bar") !== "0"; } catch { /* optional preference */ }
+  $("guest-status-bar").hidden = !statusOption.checked;
+  statusOption.addEventListener("change", () => {
+    $("guest-status-bar").hidden = !statusOption.checked;
+    try { localStorage.setItem("dropnote:guest-show-status-bar", statusOption.checked ? "1" : "0"); } catch { /* optional preference */ }
+  });
+  const more = $("guest-more");
+  document.addEventListener("click", event => { if (!more.contains(event.target) || event.target.closest("#guest-more button")) more.open = false; });
+  more.addEventListener("keydown", event => { if (event.key === "Escape" && more.open) { event.preventDefault(); more.open = false; more.querySelector("summary").focus(); } });
   const path = location.pathname.replace(/\/$/, "");
   const unavailable = t("This guest link is unavailable.");
   const transfers = new AbortController();
   let expiryTimer, noteEditor, rawNote = "";
-  const smart = createSmartNote({ status, options: { activeLine: false } });
+  const fileActions = new Map();
+  const smart = createSmartNote({ status: noteToast, options: { activeLine: false }, references: {
+    parse: guestNoteReferences,
+    label: ref => ref.label,
+    status: ref => fileActions.has(ref.blobId) ? "available" : "unavailable",
+    open: ref => {
+      if (transfers.signal.aborted) return;
+      const button = fileActions.get(ref.blobId);
+      if (button && !button.disabled) button.click();
+      else if (!button) status.textContent = t("Reference unavailable");
+    },
+  } });
   const search = createNoteSearch();
-  const guestOptions = () => ({ markdown: $("guest-markdown").checked, links: $("guest-links").checked, checklists: $("guest-checklists").checked });
+  const guestOptions = () => ({ markdown: $("guest-markdown").checked, links: $("guest-links").checked, checklists: $("guest-checklists").checked, references: $("guest-references").checked });
+
+  const editorHelp = initEditorHelp({ canRead: () => !!noteEditor && !transfers.signal.aborted,
+    readTab: () => { try { return localStorage.getItem("dropnote:guest-help-tab"); } catch { return null; } },
+    saveTab: tab => { try { localStorage.setItem("dropnote:guest-help-tab", tab); } catch { /* optional preference */ } } });
+  $("guest-help").addEventListener("click", () => editorHelp.open());
 
   function expire() {
+    editorHelp.close();
     clearTimeout(expiryTimer);
     transfers.abort();
     $("guest-content").hidden = true;
     noteEditor?.destroy();
     noteEditor = undefined;
+    metrics(null);
+    noteToast.textContent = "";
     rawNote = "";
+    fileActions.clear();
     $("guest-note").replaceChildren();
     $("guest-files").replaceChildren();
     $("guest-name").textContent = "";
@@ -43,6 +79,7 @@ if (opening) {
   }
 
   async function download(entry, key, headers, button) {
+    if (transfers.signal.aborted || button.disabled) return;
     button.disabled = true;
     status.textContent = t(key ? "Downloading and decrypting" : "Downloading");
     let sink;
@@ -126,17 +163,20 @@ if (opening) {
       const data = await result.json();
       const content = key ? await openGuestSnapshot(key, data.snapshot) : data;
       signal.throwIfAborted();
-      rawNote = content.note;
+      const allowedIds = key ? new Set(data.fileIds) : null;
+      const entries = listedGuestFiles(content.files).reverse()
+        .filter(({ blobId }) => !allowedIds || allowedIds.has(blobId));
+      // Do not display or copy raw private syntax even from legacy encrypted snapshots.
+      // The server cannot rewrite those old ciphertexts; owners must replace them.
+      rawNote = sanitizeGuestNote(content.note, new Set(entries.map(entry => entry.blobId)));
       noteEditor?.destroy();
       noteEditor = new EditorView({ parent: $("guest-note"), doc: rawNote, extensions: [
         EditorState.readOnly.of(true), EditorView.editable.of(false), EditorView.lineWrapping,
         EditorView.contentAttributes.of({ tabindex: "0", "aria-labelledby": "guest-note-title" }),
         smart.extension, search.extension,
       ] });
+      metrics(noteEditor.state);
       smart.configure(noteEditor, guestOptions());
-      const allowedIds = key ? new Set(data.fileIds) : null;
-      const entries = listedGuestFiles(content.files).reverse()
-        .filter(({ blobId }) => !allowedIds || allowedIds.has(blobId));
       if (data.capturedAt) {
         const date = new Date(data.capturedAt).toLocaleString(document.documentElement.lang);
         $("guest-captured").textContent = t("Snapshot from {date}", { date });
@@ -147,6 +187,7 @@ if (opening) {
       $("guest-name").textContent = data.displayName;
       const date = new Date(data.expiresAt);
       $("guest-expiry").textContent = t("Access until {date}", { date: date.toLocaleString(document.documentElement.lang) });
+      fileActions.clear();
       $("guest-files").replaceChildren(...entries.map((entry) => {
         const row = document.createElement("li");
         const name = document.createElement("span");
@@ -155,11 +196,13 @@ if (opening) {
         button.type = "button";
         button.textContent = t("Download");
         button.addEventListener("click", () => void download(entry, key, headers, button));
+        fileActions.set(entry.blobId, button);
         row.append(name, button);
         return row;
       }));
       $("guest-no-files").hidden = entries.length > 0;
-      $("guest-copy").disabled = !rawNote;
+      for (const id of ["guest-copy", "guest-copy-readable", "guest-download-readable"]) $(id).disabled = !rawNote;
+      smart.refresh(noteEditor);
       $("guest-content").hidden = false;
       noteEditor.requestMeasure();
       $("guest-locked").hidden = true;
@@ -173,9 +216,18 @@ if (opening) {
     }
   }
 
-  $("guest-copy").addEventListener("click", () => void copyText(rawNote, status, t("Text copied.")));
+  $("guest-copy").addEventListener("click", () => void copyText(rawNote, noteToast, t("Text copied.")));
+  $("guest-copy-readable").addEventListener("click", () => {
+    if (!transfers.signal.aborted && rawNote) void copyText(readableGuestNote(rawNote), noteToast, t("Readable text copied."));
+  });
+  $("guest-download-readable").addEventListener("click", () => {
+    if (transfers.signal.aborted || !rawNote) return;
+    const url = URL.createObjectURL(new Blob([readableGuestNote(rawNote)], { type: "text/plain;charset=utf-8" }));
+    const anchor = document.createElement("a"); anchor.href = url; anchor.download = "note-readable.txt"; anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
   $("guest-find").addEventListener("click", () => { if (noteEditor) search.open(noteEditor); });
-  for (const id of ["guest-markdown", "guest-links", "guest-checklists"]) $(id).addEventListener("change", () => { if (noteEditor) smart.configure(noteEditor, guestOptions()); });
+  for (const id of ["guest-markdown", "guest-links", "guest-checklists", "guest-references"]) $(id).addEventListener("change", () => { if (noteEditor) smart.configure(noteEditor, guestOptions()); });
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     void open(field.value);

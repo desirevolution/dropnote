@@ -61,12 +61,10 @@ export const PAD_CSS = `
   .transfer-notice { justify-content: space-between; padding: .25rem .6rem; margin-bottom: .65rem; background: var(--panel); border-radius: .25rem; font-size: .875rem; }
   .card, .access-panel { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: .375rem; }
   .note-card { overflow: hidden; isolation: isolate; }
-  #note .cm-editor { height: min(clamp(22rem, 64vh, 52rem), var(--note-visible-height, 100vh)); background: var(--surface); }
+  #note .cm-editor { background: var(--surface); }
   #note[data-font-size="small"] { --note-font-size: .84rem; }
   #note[data-font-size="large"] { --note-font-size: 1.15rem; }
-  #note .cm-scroller { font: var(--note-font-size, .96rem)/1.65 "IBM Plex Mono", ui-monospace, "DejaVu Sans Mono", monospace; }
-  #note .cm-content { align-self: stretch; padding: 1rem 1.1rem; caret-color: var(--fg); }
-  #note .cm-line { padding: 0; }
+  #note .cm-scroller { font: var(--note-font-size, .96rem)/1.5 "IBM Plex Mono", ui-monospace, "DejaVu Sans Mono", monospace; }
   #note .note-link { color: var(--accent); text-decoration: underline; cursor: pointer; }
   #note .cm-content[contenteditable="true"] .note-link { cursor: text; }
   @media (pointer: coarse) { #note .cm-content[contenteditable="true"] .note-link { cursor: pointer; } }
@@ -133,6 +131,20 @@ export const PAD_CSS = `
   dialog p { font-size: .9rem; color: var(--muted); }
   dialog .form-error { color: var(--error); }
   .dialog-actions { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: flex-end; margin-top: 1rem; }
+  #reference-picker { width: min(34rem, calc(100vw - 2rem)); max-height: min(34rem, calc(100dvh - 2rem)); }
+  #reference-picker[data-anchored] { position: fixed; inset: auto; margin: 0; }
+  #reference-picker[data-anchored]::backdrop { background: transparent; }
+  .reference-picker-controls, #reference-unlock { display: grid; gap: .55rem; }
+  .reference-filters { display: flex; flex-wrap: wrap; gap: .35rem; }
+  .reference-filters button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+  #reference-results { display: grid; gap: .25rem; overflow: auto; max-height: min(22rem, 45dvh); }
+  #reference-results h3 { font-size: .85rem; margin: .4rem 0 0; color: var(--muted); }
+  #reference-results button { text-align: left; white-space: normal; overflow-wrap: anywhere; min-height: 2.5rem; }
+  #reference-results button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  @media (pointer: coarse), (max-width: 600px) {
+    #reference-picker { width: calc(100vw - 1rem); max-height: calc(100dvh - 1rem); }
+    #reference-results { max-height: 45dvh; }
+  }
   #new-pad-form { display: grid; gap: .8rem; }
   #new-pad-form label { display: grid; gap: .3rem; font-size: .875rem; font-weight: 600; }
   #new-pad-form .new-pad-encrypted { display: flex; align-items: flex-start; gap: .6rem; padding: .65rem; background: var(--panel); border-radius: .45rem; }
@@ -149,6 +161,7 @@ export const PAD_CSS = `
   #space-access-status { margin-block: .65rem; }
   #space-access-status:empty { margin: 0; }
   .access-toast { position: fixed; z-index: 10; inset-inline-end: 1rem; inset-block-start: 1rem; display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; max-inline-size: calc(100vw - 2rem); padding: .65rem; background: var(--surface); border: 1px solid var(--accent); border-radius: .35rem; box-shadow: 0 .25rem 1rem #0003; }
+  #reference-toast { inset-block-start: auto; inset-block-end: 1rem; }
   .request-count { min-inline-size: 1.4em; padding-inline: .25em; border-radius: 1em; background: var(--accent); color: var(--on-accent); text-align: center; }
   #my-pads-list, .account-list { max-height: 45vh; overflow-y: auto; }
   #my-pads-list li, .account-list li { display: flex; align-items: center; justify-content: space-between; gap: .5rem; border-bottom: 1px solid var(--border); padding: .4rem .25rem; }
@@ -191,16 +204,22 @@ export const PAD_CSS = `
   .start-marker { display: inline-flex; align-items: center; gap: .3rem; width: fit-content; padding: .15rem .4rem; color: var(--accent); background: var(--accent-soft); border-radius: .25rem; font-size: .8rem; font-weight: 600; }
   .start-marker svg { width: .85rem; height: .85rem; }
   .menu-items hr { border: 0; border-top: 1px solid var(--border); margin: .25rem 0; }
-  #note-view summary { display: flex; gap: .4rem; padding: .45rem .65rem; }
+  #note-view summary, #readable-export summary { display: flex; gap: .4rem; padding: .45rem .65rem; }
+  .workspace-actions { flex: 1 1 25rem; min-width: 0; justify-content: flex-end; }
+  #note-tools { position: relative; display: flex; flex-wrap: nowrap; gap: .2rem; width: 100%; justify-content: flex-end; min-width: 0; }
+  .editor-direct-actions { display: flex; flex-wrap: nowrap; align-items: center; gap: .2rem; }
+  #note-tools .editor-direct-actions > button, #note-tools .editor-direct-actions > details > summary, #editor-more > summary { width: 2.5rem; min-width: 2.5rem; min-height: 2.5rem; padding: .4rem; }
+  .editor-direct-actions .editor-action-label { display: none; }
+  .editor-direct-actions > #copy-note, .editor-direct-actions > #find-note { margin-inline-start: .25rem; border-inline-start: 1px solid var(--border); }
+  #editor-more > .menu-items { max-height: min(65dvh, 30rem); overflow: auto; }
+  #editor-more .menu-items details { position: static; }
+  #editor-more .menu-items details > summary { display: flex; justify-content: flex-start; align-items: center; gap: .4rem; border: 0; font-size: .875rem; }
+  #editor-more .menu-items details > .menu-items { position: static; width: auto; max-width: 100%; box-shadow: none; margin: .2rem 0; }
+  #editor-more .menu-items label { white-space: normal; }
   #note-view .menu-items label { padding: .4rem .55rem; cursor: pointer; }
   #note-view .editor-font-option { display: grid; gap: .25rem; }
   #note-view input { accent-color: var(--accent); }
-  #note-tools #undo-note, #note-tools #redo-note { padding-inline: .6rem; }
-  #note-clipboard-status { min-height: 1.5em; margin: .25rem .75rem 0; color: var(--muted); font-size: .875rem; }
   #password-groups { display: block; color: var(--muted); margin-top: .5rem; font: .875rem ui-monospace, monospace; }
-  #note .cm-gutters { background: var(--panel); color: var(--muted); border-color: var(--border); }
-  #note .cm-lineNumbers .cm-gutterElement { padding-inline: .55rem; }
-  #note .cm-gutters .cm-gutter { padding-block: 1rem; }
   .passphrase-actions { margin-top: .4rem; }
   #new-pad-expiry-summary { margin-inline-start: .5rem; color: var(--muted); }
   #share-secret-options { margin-bottom: .8rem; }
@@ -247,22 +266,20 @@ export const PAD_CSS = `
   @media (max-width: 46rem) {
     .topbar-inner, main { width: calc(100% - 2rem); }
     main { padding-top: 1.25rem; }
-    #note .cm-editor { height: min(clamp(13rem, 42vh, 27rem), var(--note-visible-height, 100vh)); }
   }
   @media (max-width: 34rem) {
     .workspace-actions, #note-tools { width: 100%; }
     #note-tools { position: relative; column-gap: .25rem; }
-    #note-view { position: static; }
-    #note-view .menu-items { max-width: 100%; }
+    #note-view .menu-items, #readable-export .menu-items { max-width: calc(100vw - 2rem); }
     #files-tools { width: 100%; }
     #attachments li { grid-template-columns: minmax(0, 1fr); }
   }
-  @media (pointer: fine) {
-    body { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
-    main, .workspace { display: flex; flex: 1 0 auto; flex-direction: column; }
-    .note-card, #note { display: flex; flex: 1 1 auto; flex-direction: column; }
-    #note .cm-editor { flex: 1 1 auto; height: auto; min-height: 13rem; contain: size; }
-  }
+  body { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
+  main, .workspace { display: flex; flex: 1 0 auto; flex-direction: column; }
+  .note-card, #note { display: flex; flex: 1 1 auto; flex-direction: column; }
+  #note .cm-editor { flex: 1 1 auto; height: auto; min-height: min(13rem, var(--note-visible-height, 100dvh)); max-height: var(--note-visible-height, none); contain: size; }
+  #note-status-bar { flex: none; }
+  .space-history-actions { display: inline-flex; gap: .15rem; align-items: center; padding-inline-end: .4rem; border-inline-end: 1px solid var(--border); }
   @media (pointer: coarse) {
     .drop-zone-hint, #paste-image { display: none; }
   }

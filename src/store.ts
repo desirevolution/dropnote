@@ -9,6 +9,7 @@ import path from "node:path";
 import { SlugTakenError } from "./slug.ts";
 import type { EncryptionParameters } from "./pad-access.ts";
 import { isNotFound, messageOf } from "./errors.ts";
+import { SPACE_ID_PATTERN } from "./space-identity.ts";
 
 /**
  * A blob ID: 32 hex characters, server-generated (crypto.randomBytes) and
@@ -52,6 +53,8 @@ export interface GuestLink {
 }
 
 export interface PadRecord {
+  /** Immutable identity, independent of the reusable public slug. */
+  readonly spaceId: string;
   guestLink?: GuestLink;
   seenRevisions?: Record<string, number>;
   owner?: string;
@@ -79,6 +82,8 @@ export interface PadRecord {
    * list); blob contents never are — see ADR-0002 and the ticket's scope.
    */
   blobs?: Record<string, BlobRecord>;
+  /** Deleted attachment identities are never assigned again in this Space. */
+  retiredBlobIds?: Record<string, true>;
 }
 
 export interface PadIndex {
@@ -143,7 +148,16 @@ export class PadStore {
   /** Fills in fields added after an index was written (older records first). */
   #normalize(): void {
     let changed = false;
+    const ids = new Set<string>();
     for (const pad of Object.values(this.#index.pads)) {
+      if (pad.spaceId === undefined) {
+        Object.assign(pad, { spaceId: randomUUID() });
+        changed = true;
+      }
+      if (typeof pad.spaceId !== "string" || !SPACE_ID_PATTERN.test(pad.spaceId) || ids.has(pad.spaceId)) {
+        throw new Error("Invalid or duplicate Space identity in data index");
+      }
+      ids.add(pad.spaceId);
       if (pad.expiresAt === undefined) {
         pad.expiresAt = null;
         changed = true;
@@ -160,6 +174,12 @@ export class PadStore {
     const pad = this.getPad(slug);
     if (this.#deleting.has(slug) || !pad || (pad.expiresAt !== null && Date.parse(pad.expiresAt) <= Date.now())) return undefined;
     return pad;
+  }
+
+  /** Internal lookup only; callers must enforce the same ACL as slug lookup. */
+  getLivePadById(id: string): PadRecord | undefined {
+    if (!SPACE_ID_PATTERN.test(id)) return undefined;
+    return Object.values(this.#index.pads).find(pad => pad.spaceId === id && this.getLivePad(pad.slug) === pad);
   }
 
   padForGuestToken(token: string): PadRecord | undefined {
@@ -301,6 +321,7 @@ export class PadStore {
   recordBlob(slug: string, blobId: string, size: number): void {
     const pad = this.#index.pads[slug];
     if (!pad) throw new Error(`Cannot record a blob for unknown Pad "${slug}"`);
+    if (pad.retiredBlobIds?.[blobId]) throw new Error("Cannot reuse a deleted Attachment ID");
     pad.blobs = pad.blobs ?? {};
     const previous = pad.blobs[blobId];
     pad.blobs[blobId] = { size, createdAt: new Date().toISOString() };
@@ -313,12 +334,22 @@ export class PadStore {
     }
   }
 
-  /** Forgets a blob in the index; the caller removes the file itself. */
-  forgetBlob(slug: string, blobId: string): void {
+  /** Forgets a blob in the index; the caller removes the file itself.
+   * User-visible deletions retire the ID; failed upload rollbacks do not.
+   */
+  forgetBlob(slug: string, blobId: string, retire = false): void {
     const pad = this.#index.pads[slug];
-    if (!pad?.blobs?.[blobId]) return;
+    const previous = pad?.blobs?.[blobId];
+    if (!pad?.blobs || !previous) return;
+    const previousRetired = pad.retiredBlobIds;
     delete pad.blobs[blobId];
-    this.#save();
+    if (retire) pad.retiredBlobIds = { ...previousRetired, [blobId]: true };
+    try { this.#save(); }
+    catch (error) {
+      pad.blobs[blobId] = previous;
+      pad.retiredBlobIds = previousRetired;
+      throw error;
+    }
   }
 
   /** The directory holding a Pad's Attachment blobs. */
@@ -356,6 +387,7 @@ export class PadStore {
     const existing = this.getPad(slug);
     if (existing) return existing;
     const pad: PadRecord = {
+      spaceId: randomUUID(),
       slug,
       ...(username !== null ? { owner: username } : {}),
       kind: "plain",
@@ -382,6 +414,7 @@ export class PadStore {
       throw new SlugTakenError(`The Slug "${slug}" is already taken by another Pad`);
     }
     const record: PadRecord = {
+      spaceId: randomUUID(),
       slug,
       kind: options.kind ?? "plain",
       createdAt: new Date().toISOString(),

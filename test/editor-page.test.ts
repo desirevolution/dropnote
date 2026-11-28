@@ -29,15 +29,35 @@ test("the Default Pad shows the plain-text editor alongside its files", async ()
       assert.match(viewMenu, new RegExp(`id="${id}" checked`));
     }
     assert.match(body, /id="find-note"[^>]*disabled>/);
+    assert.match(body, /id="readable-export"/);
+    assert.match(body, /id="copy-readable-note" disabled>/);
+    assert.match(body, /id="download-readable-note" disabled>/);
+    assert.match(body, /id="insert-reference"[^>]*disabled>/);
+    assert.match(body, /id="editor-help"[^>]*disabled>/);
+    assert.match(body, /<dialog id="editor-help-dialog"/);
+    assert.match(body, /data-help-insert="bold"[^>]* hidden>/);
+    assert.match(body, /<dialog id="reference-picker"/);
+    assert.match(body, /<dialog id="reference-actions"/);
+    assert.match(body, /id="internal-references" checked/);
+    assert.match(body, /id="space-back"[^>]*disabled/);
+    assert.match(body, /id="space-forward"[^>]*disabled/);
+    assert.match(body, /id="reference-action-password" type="password"/);
+    assert.match(body, /id="reference-query"/);
+    assert.match(body, /id="reference-password" type="password"/);
+    assert.match(body, /id="copy-space-reference"/);
+    assert.match(body, /id="copy-downloads-reference"/);
     assert.match(body, /IBM Plex Mono/);
     const font = await fetch(`${server.baseUrl}/fonts/IBMPlexMono-Regular.woff2`);
     assert.equal(font.status, 200);
     assert.match(font.headers.get("content-type") ?? "", /font\/woff2/);
     assert.equal(Buffer.from(await font.arrayBuffer()).subarray(0, 4).toString(), "wOF2");
     assert.match(body, /id="line-numbers">/);
-    assert.match(body, /id="note-panel"[^>]*>[\s\S]*?<p id="note-clipboard-status" role="status"><\/p>[\s\S]*?<div id="note">/,
-      "copy and paste feedback has a shared status line above the editor, outside the toolbar");
-    assert.match(body, /id="paste-note" disabled>/);
+    assert.match(body, /id="note-clipboard-status" class="editor-toast" role="status"><\/p>/);
+    assert.match(body, /id="note-panel"[^>]*>[\s\S]*?<div id="note"><\/div>[\s\S]*?id="note-status-bar"/);
+    assert.doesNotMatch(body, /id="note-panel"[^>]*>[^<]*<p id="note-clipboard-status"/);
+    assert.match(body, /id="show-status-bar" checked/);
+    assert.match(body, /id="editor-more"/);
+    assert.match(body, /id="paste-note"[^>]*disabled>/);
     assert.match(body, /id="undo-note"[^>]*disabled>/);
     assert.match(body, /id="redo-note"[^>]*disabled>/);
     assert.doesNotMatch(body, /<a[^>]*class="release-version"/);

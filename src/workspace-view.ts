@@ -4,8 +4,9 @@ export function workspaceViewKey(pad: { slug: string; createdAt: string }): stri
   return `dropnote:workspace-view:${pad.slug}:${pad.createdAt}`;
 }
 
-export function initialWorkspaceView(filesLink: boolean, saved: string | null, noteText: string, fileCount: number): WorkspaceView {
-  if (filesLink) return "files";
+export function initialWorkspaceView(filesLink: boolean | WorkspaceView, saved: string | null, noteText: string, fileCount: number): WorkspaceView {
+  if (filesLink === "note") return "note";
+  if (filesLink === true || filesLink === "files") return "files";
   if (saved === "note" || saved === "files") return saved;
   return !noteText.trim() && fileCount > 0 ? "files" : "note";
 }

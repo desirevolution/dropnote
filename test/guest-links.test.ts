@@ -10,6 +10,7 @@ import { encryptBlob } from "../frontend/crypto.js";
 import { decryptAttachment, encryptAttachment } from "../frontend/encrypted-attachments.js";
 import { openGuestSnapshot, sealGuestSnapshot } from "../frontend/guest-snapshot.js";
 import { createEncryption, derivePadKey, guestProof, guestProofHash, padProof } from "../frontend/passphrase.js";
+import { formatReference, formatGuestFileReference } from "../src/internal-references.ts";
 import { loadConfig } from "../src/config.ts";
 import { startServer } from "../src/server.ts";
 import { PadStore } from "../src/store.ts";
@@ -28,7 +29,7 @@ const credentials = async () => {
   return { encryption, key, proof: await padProof(key), guestProof: await guestProof(key), hash: await guestProofHash(key) };
 };
 
-async function setup(t: TestContext, { multiuser = false, enabled = true, ttlSeconds = 90_000, plain = false, legacy = false } = {}) {
+async function setup(t: TestContext, { multiuser = false, enabled = true, ttlSeconds = 90_000, plain = false, legacy = false, references = false } = {}) {
   const dataDir = await makeTempDataDir();
   const store = PadStore.open(dataDir, multiuser);
   const access = await credentials();
@@ -45,7 +46,18 @@ async function setup(t: TestContext, { multiuser = false, enabled = true, ttlSec
   doc.getText("note").insert(0, "client-only note");
   const ids = ["a".repeat(32), "b".repeat(32)];
   for (const id of ids) doc.getArray("attachments").push([{ blobId: id, name: id + ".txt", size: ("guest file " + id).length }]);
-  const snapshot = await sealGuestSnapshot(access.key, doc);
+  const foreignId = "12345678-1234-4123-8123-123456789abc";
+  const guestFile = formatGuestFileReference({ blobId: ids[0]!, label: "Included file" });
+  if (references) {
+    const note = doc.getText("note");
+    note.insert(note.length, "\n" + [
+      formatReference({ kind: "space", spaceId: foreignId, view: "note", label: "Private page", alias: false }),
+      formatReference({ kind: "file", spaceId: pad.spaceId, blobId: ids[0]!, label: "Included file", alias: true }),
+      formatReference({ kind: "file", spaceId: foreignId, blobId: ids[0]!, label: "Foreign file", alias: false }),
+      formatReference({ kind: "file", spaceId: pad.spaceId, blobId: "d".repeat(32), label: "Missing file", alias: false }),
+    ].join("\n"));
+  }
+  const snapshot = await sealGuestSnapshot(access.key, doc, pad.spaceId, new Set(ids));
   const log = openUpdateLog(store.padDir(slug));
   const update = Y.encodeStateAsUpdate(doc);
   log.append(Buffer.from(plain ? update : await encryptBlob(access.key, update)));
@@ -100,7 +112,7 @@ async function setup(t: TestContext, { multiuser = false, enabled = true, ttlSec
   function open(path: string, proof: string = access.guestProof, origin = guest) {
     return send(`${path}/open`, { method: "POST", host: guest, headers: { Origin: origin, "X-Guest-Proof": proof } });
   }
-  return { access, pad, ids, orphan, server, send, put, open, alice, dataDir };
+  return { access, pad, ids, orphan, server, send, put, open, alice, dataDir, foreignId, guestFile, snapshot };
 }
 
 test("guest links are opt-in and require a distinct HTTPS origin", async (t) => {
@@ -132,7 +144,7 @@ test("only an unlocked owner can issue a link and public HTTP and WS expose gues
 
   const path = new URL(link.url).pathname;
   assert.equal((await app.send(path, { headers: app.alice })).status, 404);
-  for (const blocked of ["/", "/events", "/api/my-spaces", `/p/${slug}`, guestPath, "/js/editor.bundle.js"]) {
+  for (const blocked of ["/", "/events", "/api/my-spaces", `/api/space-references/${app.pad.spaceId}`, `/api/space-references/${app.pad.spaceId}/files`, `/p/${slug}`, guestPath, "/js/editor.bundle.js"]) {
     assert.equal((await app.send(blocked, { host: guest, headers: app.alice })).status, 404, blocked);
   }
   assert.equal((await app.send("/g/client.js", { host: guest })).status, 200);
@@ -151,8 +163,14 @@ test("only an unlocked owner can issue a link and public HTTP and WS expose gues
   assert.match(page.text, /id="guest-links"[^>]*checked/);
   assert.match(page.text, /id="guest-checklists"[^>]*checked/);
   assert.doesNotMatch(page.text, /window\.takeOpeningPassphrase/);
-  const script = page.text.match(/<script>([\s\S]*?)<\/script>/)![1]!;
-  assert.ok(String(page.headers["content-security-policy"]).includes("'sha256-" + createHash("sha256").update(script).digest("base64") + "'"));
+  const scripts = [...page.text.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+  assert.equal(scripts.length, 2, "fragment and theme scripts both run under the guest CSP");
+  for (const script of scripts) assert.ok(String(page.headers["content-security-policy"]).includes("'sha256-" + createHash("sha256").update(script[1]!).digest("base64") + "'"));
+  assert.match(String(page.headers["content-security-policy"]), /font-src 'self'/);
+  const font = await app.send("/fonts/IBMPlexMono-Regular.woff2", { host: guest });
+  assert.equal(font.status, 200);
+  assert.equal(font.bytes.subarray(0, 4).toString(), "wOF2");
+  assert.equal((await app.send("/fonts/other.woff2", { host: guest })).status, 404);
   assert.ok(!page.text.includes(displayName) && !page.text.includes("client-only note") && !page.text.includes(link.expiresAt));
   assert.equal((await app.open(path, app.access.proof)).status, 403);
   assert.equal((await app.open(path, app.access.guestProof, internal)).status, 403);
@@ -259,7 +277,15 @@ test("normal spaces require a separate password, serve the current content and i
   const filePath = path + "/files/" + app.ids[0];
   assert.equal((await app.send(filePath, { host: guest })).status, 404);
   assert.equal((await app.send(path + "/files/" + app.orphan, { host: guest, headers: { "X-Guest-Session": data.session } })).status, 404);
-  assert.equal((await app.send(filePath, { host: guest, headers: { "X-Guest-Session": data.session } })).text, "guest file " + app.ids[0]);
+  const downloaded = await app.send(filePath, { host: guest, headers: { "X-Guest-Session": data.session } });
+  assert.equal(downloaded.text, "guest file " + app.ids[0]);
+  assert.equal(downloaded.headers["cache-control"], "no-store");
+  assert.equal(Number(downloaded.headers["content-length"]), downloaded.bytes.length);
+  const head = await app.send(filePath, { host: guest, method: "HEAD", headers: { "X-Guest-Session": data.session } });
+  assert.equal(head.status, 200);
+  assert.equal(head.bytes.length, 0);
+  assert.equal(head.headers["content-length"], downloaded.headers["content-length"]);
+  assert.equal((await app.send(filePath, { host: guest, method: "HEAD" })).status, 404);
   assert.doesNotMatch(JSON.stringify(PadStore.open(app.dataDir, true).getPad(slug)?.guestLink), /example guest password/);
   const replacement = new URL(JSON.parse((await create(true)).text).link.url).pathname;
   assert.equal((await app.send(filePath, { host: guest, headers: { "X-Guest-Session": data.session } })).status, 404);
@@ -291,4 +317,54 @@ test("old encrypted guest links cannot serve the historical update log", async (
   assert.equal((await app.open(path)).status, 404);
   assert.equal(JSON.parse((await app.send(guestPath)).text).link, null);
   assert.equal((await app.put(false)).status, 200);
+});
+
+
+test("public guest output redacts private references and authorizes only included local files in both modes", async (t) => {
+  for (const plain of [true, false]) {
+    const app = await setup(t, { plain, multiuser: true, references: true });
+    const password = "example guest password";
+    const issued = plain ? await app.send(guestPath, { method: "PUT", headers: app.alice, body: { duration: "24h", password, oneTime: false } }) : await app.put(false);
+    assert.equal(issued.status, 200, issued.text);
+    const path = new URL(JSON.parse(issued.text).link.url).pathname;
+    const opened = plain ? await app.send(path + "/open", { host: guest, method: "POST", headers: { Origin: guest }, body: { password } }) : await app.open(path);
+    assert.equal(opened.status, 200, opened.text);
+    const data = JSON.parse(opened.text);
+    const content = plain ? data : await openGuestSnapshot(app.access.key, data.snapshot);
+    assert.equal(content.note, `client-only note\nPrivate page\n${app.guestFile}\nForeign file\nMissing file`);
+    assert.ok(!JSON.stringify(content).includes(app.pad.spaceId));
+    assert.ok(!JSON.stringify(content).includes(app.foreignId));
+    const headers: Record<string, string> = plain ? { "X-Guest-Session": data.session } : { "X-Guest-Proof": app.access.guestProof };
+    assert.equal((await app.send(path + "/files/" + app.ids[0], { host: guest, headers })).status, 200);
+    assert.equal((await app.send(path + "/files/" + app.orphan, { host: guest, headers })).status, 404);
+    assert.equal((await app.send(path + "/files/" + "d".repeat(32), { host: guest, headers })).status, 404);
+    assert.equal((await app.send(`/api/space-references/${app.pad.spaceId}/files`, { host: guest, headers })).status, 404);
+  }
+});
+
+test("encrypted snapshot file preflight is owner/proof/identity guarded and not public", async (t) => {
+  const app = await setup(t, { multiuser: true });
+  const path = guestPath + "/files";
+  const headers = { ...app.alice, "X-Pad-Proof": app.access.proof, "X-Space-Id": app.pad.spaceId };
+  assert.equal((await app.send(path, { headers: app.alice })).status, 403);
+  assert.equal((await app.send(path, { headers: { ...headers, "X-Forwarded-User": "bob" } })).status, 403);
+  assert.equal((await app.send(path, { headers: { ...headers, "X-Space-Id": app.foreignId } })).status, 404);
+  assert.equal((await app.send(path, { host: guest, headers })).status, 404);
+  const response = await app.send(path, { headers });
+  assert.equal(response.status, 200);
+  assert.deepEqual(JSON.parse(response.text).fileIds.sort(), [...app.ids, app.orphan].sort());
+});
+
+
+test("a changed encrypted snapshot file list cannot replace the existing guest link", async (t) => {
+  const app = await setup(t, { multiuser: true });
+  const initial = await app.put(false);
+  assert.equal(initial.status, 200);
+  const previous = JSON.parse(initial.text).link.url;
+  const result = await app.send(guestPath, { method: "PUT", headers: { ...app.alice, "X-Pad-Proof": app.access.proof }, body: {
+    duration: "24h", proofHash: app.access.hash, oneTime: false,
+    snapshot: { ...app.snapshot, fileIds: [...app.snapshot.fileIds, "d".repeat(32)] },
+  } });
+  assert.equal(result.status, 409);
+  assert.equal(JSON.parse((await app.send(guestPath, { headers: app.alice })).text).link.url, previous);
 });

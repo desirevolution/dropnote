@@ -1,15 +1,76 @@
 import { StateEffect, StateField, Prec } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, WidgetType, keymap } from "@codemirror/view";
 import { smartLines, inlineFormats, listContinuation } from "../src/smart-note.ts";
+import { noteReferences } from "../src/internal-references.ts";
 import { t } from "./i18n.js";
 import { copyText } from "./pad-actions.js";
 
 export const smartDefaults = { links: true, markdown: true, checklists: true, activeLine: true };
 
-export function createSmartNote({ onEdit = (run) => run(), status, options = smartDefaults } = {}) {
+export function createSmartNote({ onEdit = (run) => run(), status, options = smartDefaults, references } = {}) {
   const setOptions = StateEffect.define();
+  const refreshReferences = StateEffect.define();
+  function buildRefs(doc) { const text = doc.toString(); return text.includes("[[") ? (references?.parse ?? noteReferences)(text) : []; }
+  const referenceModel = StateField.define({
+    create: state => references ? buildRefs(state.doc) : [],
+    update: (value, tr) => references && tr.docChanged ? buildRefs(tr.newDoc) : value,
+  });
+  function refAt(view, pos) {
+    if (!references || !view.state.field(config).references) return null;
+    const refs = view.state.field(referenceModel);
+    return refs.find(r => r.from <= pos && pos < r.to) ?? refs.find(r => r.to === pos);
+  }
+  function currentRef(view, ref) {
+    const current = refAt(view, ref.from);
+    return current && current.from === ref.from && current.to === ref.to &&
+      view.state.doc.sliceString(current.from, current.to) === ref.source ? current : null;
+  }
+  class ReferenceWidget extends WidgetType {
+    constructor(ref, label, status, readOnly, source) { super(); Object.assign(this, { ref: { ...ref, source }, label, status, readOnly }); }
+    eq(other) { return this.ref.from === other.ref.from && this.ref.source === other.ref.source && this.label === other.label && this.status === other.status && this.readOnly === other.readOnly; }
+    toDOM(view) {
+      const button = document.createElement("button");
+      button.type = "button"; button.className = "smart-reference"; button.dataset.status = this.status || "unknown";
+      const ns = "http://www.w3.org/2000/svg";
+      const icon = document.createElementNS(ns, "svg");
+      for (const [key, value] of Object.entries({ viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.8", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" })) icon.setAttribute(key, value);
+      const path = document.createElementNS(ns, "path");
+      path.setAttribute("d", this.status === "unavailable" ? "M12 3 2 21h20L12 3zm0 6v5m0 3h.01" : this.status === "locked" ? "M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4" : ["file", "guest-file"].includes(this.ref.kind) ? "m8 13 7-7a3 3 0 0 1 4 4l-9 9a5 5 0 0 1-7-7l9-9m-6 13 8-8" : this.ref.view === "files" ? "M3 5h7l2 3h9v12H3z" : "M5 3h10l4 4v14H5zM9 11h6m-6 4h6");
+      icon.append(path);
+      const label = document.createElement("span"); label.textContent = this.label;
+      button.append(icon, label);
+      button.title = this.status === "unavailable" ? t("Reference unavailable") : t(this.readOnly ? "Open reference" : "Ctrl/Cmd-click or tap to open reference");
+      const accessibleName = this.ref.kind === "space" && this.ref.view === "files" ? t("Downloads in {name}", { name: this.label }) : this.label;
+      button.setAttribute("aria-label", `${button.title}: ${accessibleName}`);
+      let hold, held = false, start;
+      const stopHold = () => { clearTimeout(hold); hold = undefined; };
+      button.addEventListener("pointerdown", e => {
+        stopHold(); held = false;
+        if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+        start = [e.clientX, e.clientY];
+        hold = setTimeout(() => {
+          const ref = currentRef(view, this.ref);
+          if (references.menu && button.isConnected && ref) { held = true; references.menu?.(ref); }
+        }, 550);
+      });
+      button.addEventListener("pointermove", e => { if (hold && Math.hypot(e.clientX - start[0], e.clientY - start[1]) > 10) stopHold(); });
+      for (const type of ["pointerup", "pointercancel", "pointerleave"]) button.addEventListener(type, stopHold);
+      button.addEventListener("mousedown", e => e.preventDefault());
+      button.addEventListener("click", e => {
+        e.preventDefault(); e.stopPropagation();
+        if (held) { held = false; return; }
+        const ref = currentRef(view, this.ref); if (!ref) return;
+        const touch = e.pointerType === "touch" || e.pointerType === "pen" || (!e.pointerType && matchMedia("(pointer: coarse)").matches);
+        if (view.state.readOnly || e.ctrlKey || e.metaKey || touch || e.detail === 0) references.open(ref);
+        else { view.dispatch({ selection: { anchor: ref.from + 2 } }); view.focus(); }
+      });
+      button.addEventListener("contextmenu", e => { if (!references.menu) return; e.preventDefault(); e.stopPropagation(); const ref = currentRef(view, this.ref); if (ref) references.menu?.(ref); });
+      button.addEventListener("keydown", e => { if (references.menu && (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10"))) { e.preventDefault(); const ref = currentRef(view, this.ref); if (ref) references.menu?.(ref); } });
+      return button;
+    }
+  }
   const config = StateField.define({
-    create: () => ({ ...smartDefaults, ...options }),
+    create: () => ({ ...smartDefaults, references: Boolean(references), ...options }),
     update(value, tr) {
       for (const effect of tr.effects) if (effect.is(setOptions)) value = { ...value, ...effect.value };
       return value;
@@ -93,6 +154,8 @@ export function createSmartNote({ onEdit = (run) => run(), status, options = sma
     const prefs = state.field(config);
     const ranges = [], seen = new Set();
     const selection = state.selection.ranges;
+    const refs = state.field(referenceModel);
+    let refIndex = 0;
     const mark = (from, to, cls) => { if (from < to) ranges.push(Decoration.mark({ class: cls }).range(from, to)); };
     const hide = (from, to) => { if (from < to) ranges.push(hidden.range(from, to)); };
     const link = (from, to, href) => {
@@ -126,9 +189,20 @@ export function createSmartNote({ onEdit = (run) => run(), status, options = sma
               if (!editingMarker) ranges.push(Decoration.replace({ widget: new TaskWidget(line, state.readOnly) }).range(markerStart, start + 3));
               if (line.task.checked) mark(start + 3, line.to, "smart-task-done");
             }
+            while (refs[refIndex] && refs[refIndex].to <= line.from) refIndex++;
+            const lineRefs = [];
+            for (let i = refIndex; refs[i] && refs[i].from < line.to; i++) lineRefs.push(refs[i]);
+            for (const ref of lineRefs) {
+              if (!prefs.references) continue;
+              const editing = !state.readOnly && selection.some(s => (view.hasFocus || !s.empty) && s.from <= ref.to && s.to >= ref.from);
+              if (editing) mark(ref.from, ref.to, "smart-reference-source");
+              else ranges.push(Decoration.replace({ widget: new ReferenceWidget(ref, references.label(ref), references.status(ref), state.readOnly, state.doc.sliceString(ref.from, ref.to)) }).range(ref.from, ref.to));
+            }
             for (const f of inlineFormats(line.text)) {
               const start = line.from + f.from, end = line.from + f.to;
               const innerFrom = start + f.start, innerTo = end - f.end;
+              // Canonical tokens are opaque even with reference formatting disabled.
+              if (lineRefs.some(r => start < r.to && end > r.from)) continue;
               // Never overlap the checklist marker or a hidden heading prefix.
               if (line.task && f.from < line.task.from + 3) continue;
               if (f.kind === "link") {
@@ -154,7 +228,7 @@ export function createSmartNote({ onEdit = (run) => run(), status, options = sma
     constructor(view) { this.decorations = inlineDecorations(view); }
     update(update) {
       if (update.docChanged || update.viewportChanged || update.selectionSet || update.focusChanged ||
-          update.startState.readOnly !== update.state.readOnly || update.startState.field(config) !== update.state.field(config)) {
+          update.transactions.some(tr => tr.effects.some(e => e.is(refreshReferences))) || update.startState.readOnly !== update.state.readOnly || update.startState.field(config) !== update.state.field(config)) {
         this.decorations = inlineDecorations(update.view);
       }
     }
@@ -165,8 +239,16 @@ export function createSmartNote({ onEdit = (run) => run(), status, options = sma
   }
   return {
     configure(view, options) { view.dispatch({ effects: setOptions.of(options) }); },
-    extension: [config, model, structure, plugin,
+    refresh(view) { view.dispatch({ effects: refreshReferences.of(null) }); },
+    extension: [config, model, referenceModel, structure, plugin,
       EditorView.domEventHandlers({
+        contextmenu(event, view) {
+          if (!references?.menu) return false;
+          const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+          const ref = pos == null ? null : refAt(view, pos);
+          if (!ref) return false;
+          event.preventDefault(); references.menu?.(ref); return true;
+        },
         click(event, view) {
           const anchor = event.target.closest?.("a.note-link");
           if (!anchor || !view.contentDOM.contains(anchor)) return false;
@@ -177,10 +259,14 @@ export function createSmartNote({ onEdit = (run) => run(), status, options = sma
         },
       }),
       Prec.high(keymap.of([
+        { key: "Shift-F10", run(view) { const ref = refAt(view, view.state.selection.main.head); if (!ref || !references?.menu) return false; references.menu(ref); return true; } },
         { key: "Mod-Enter", run(view) {
           const prefs = view.state.field(config), head = view.state.selection.main.head;
           const line = lineModel(view, head);
           if (["code", "fence"].includes(line.kind)) return false;
+          const ref = refAt(view, head);
+          if (ref) { references.open(ref); return true; }
+          if (view.state.field(referenceModel).some(r => r.from <= head && head <= r.to)) return false;
           if (prefs.links) {
             const f = inlineFormats(line.text).find(f => f.href && head >= line.from + f.from && head <= line.from + f.to);
             if (f) { open(f.href); return true; }

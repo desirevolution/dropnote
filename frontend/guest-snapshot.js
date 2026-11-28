@@ -1,3 +1,4 @@
+import { sanitizeGuestNote } from "../src/internal-references.ts";
 import { decodeBase64url, decryptBlob, encodeBase64url, encryptBlob } from "./crypto.js";
 
 export function listedGuestFiles(files) {
@@ -5,10 +6,12 @@ export function listedGuestFiles(files) {
     typeof entry.blobId === "string" && /^[0-9a-f]{32}$/.test(entry.blobId));
 }
 
-export async function sealGuestSnapshot(key, doc) {
-  const note = doc.getText("note").toString();
+export async function sealGuestSnapshot(key, doc, spaceId, availableIds) {
   const files = listedGuestFiles(doc.getArray("attachments").toArray())
+    .filter(({ blobId }) => availableIds.has(blobId))
     .map(({ blobId, name, size }) => ({ blobId, name, size }));
+  if (typeof spaceId !== "string" || !spaceId) throw new Error("Missing Space identity");
+  const note = sanitizeGuestNote(doc.getText("note").toString(), new Set(files.map(file => file.blobId)), spaceId);
   const bytes = new TextEncoder().encode(JSON.stringify({ note, files }));
   const ciphertext = await encryptBlob(key, bytes);
   if (ciphertext.length > 1024 * 1024) throw new Error("The encrypted snapshot is too large.");

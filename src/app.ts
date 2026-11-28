@@ -1,3 +1,5 @@
+import { referenceReplay } from "./reference-replay.ts";
+import { matchesSpaceId } from "./space-identity.ts";
 import { parseDisplayName } from "./space-label.ts";
 import { detectLanguage, type Language } from "./locale.ts";
 import { fileURLToPath } from "node:url";
@@ -31,6 +33,7 @@ export interface AppOptions {
   notifyAccount?: (username: string) => void;
   onAttachmentChanged?: (slug: string) => void;
   guestUpdates?: (pad: PadRecord) => Buffer[];
+  referenceUpdates?: (pad: PadRecord) => Buffer[] | null;
   scriptUpdate?: ScriptIngest["update"];
   padRevision?: (pad: PadRecord) => PadRevision;
   onExpiryChanged?: (slug: string, expiresAt: string | null) => void;
@@ -114,6 +117,10 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     const username = requestUsername(res);
     if (username !== null && _req.method === "GET") store.rememberUser(username);
     const pad = store.ensureDefaultPad(username);
+    if (!matchesSpaceId(pad.spaceId, _req.query.spaceId)) {
+      res.status(404).type("html").send(renderNotFoundPage(undefined, res.locals.language));
+      return;
+    }
     res.type("html").send(renderPadPage(pad, {
       ...pageOptions,
       language: res.locals.language,
@@ -188,6 +195,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     try {
       const pad = store.createPad(slug, { displayName, ttlSeconds, kind, pin, encryption, owner: requestUsername(res) ?? undefined });
       res.status(201).json({
+        spaceId: pad.spaceId,
         slug: pad.slug,
         path: `${config.padPath}/${pad.slug}`,
         displayName: pad.displayName ?? null,
@@ -211,6 +219,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
       const { revision, updatedAt } = options.padRevision?.(pad) ?? { revision: 0, updatedAt: null };
       const seen = store.seenRevision(pad, username);
       return {
+        spaceId: pad.spaceId,
         slug: pad.slug,
         path: `${config.padPath}/${pad.slug}`,
         displayName: pad.displayName ?? null,
@@ -229,6 +238,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     }));
     res.set("Cache-Control", "private, no-store").json({
       spaces,
+      ...(_req.query.references === "1" ? { defaultSpace: { ...summary(store.ensureDefaultPad(username)), slug: "default", path: "/default" } } : {}),
       ...(username !== null ? {
         sharedSpaces: store.sharedPads(username).map(({ pad, grant }) => ({
           ...summary(pad), sharedBy: pad.owner, canEdit: grant.role === "edit", isNew: Boolean(grant.unreadId),
@@ -323,6 +333,50 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     });
   }
 
+  // The ID is an address, not a capability. Match the regular ACL and TTL.
+  app.get("/api/space-references/:id", limitLookups, (req, res) => {
+    res.set("Cache-Control", "private, no-store");
+    const username = requestUsername(res);
+    const pad = store.getLivePadById(req.params.id as string);
+    if (!pad || !padRole(pad, username) || (pad.kind === "encrypted" && !pad.encryption)) {
+      jsonNoPad(res);
+      return;
+    }
+    const path = isDefaultPad(pad.slug) ? "/default" : `${config.padPath}/${pad.slug}`;
+    res.json({
+      spaceId: pad.spaceId, slug: publicPadSlug(pad.slug), path,
+      displayName: pad.displayName ?? null, createdAt: pad.createdAt, expiresAt: pad.expiresAt,
+      encrypted: pad.kind === "encrypted", canEdit: canEdit(pad, username),
+      ...(pad.encryption ? { encryption: { salt: pad.encryption.salt, check: pad.encryption.check } } : {}),
+    });
+  });
+
+  // Explicit read-only replay. PINs gate editing, not reading. The proof and
+  // account ACL are checked on every request, independently of client caches.
+  app.get("/api/space-references/:id/files", limitLookups, (req, res) => {
+    res.set("Cache-Control", "private, no-store");
+    const pad = store.getLivePadById(req.params.id as string);
+    if (!pad || !padRole(pad, requestUsername(res)) || (pad.kind === "encrypted" && !pad.encryption)) {
+      jsonNoPad(res);
+      return;
+    }
+    if (!hasPadProof(pad, req.headers["x-pad-proof"])) {
+      res.status(403).json({ error: "Unlock the encrypted Pad first" });
+      return;
+    }
+    if (!options.referenceUpdates) {
+      res.status(503).json({ error: "Reference data is unavailable" });
+      return;
+    }
+    const updates = options.referenceUpdates(pad);
+    const replay = updates && referenceReplay(updates, Object.keys(pad.blobs ?? {}));
+    if (!replay) {
+      res.status(413).json({ error: "Reference data is too large. Open the space directly." });
+      return;
+    }
+    res.json({ spaceId: pad.spaceId, ...replay });
+  });
+
   app.get("/api/pads/:slug", limitLookups, (req, res) => {
     const pad = getPadOrAnswer404(store, req.params.slug as string, res);
     if (!pad || (pad.kind === "encrypted" && !pad.encryption)) {
@@ -331,6 +385,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     }
     const role = padRole(pad, requestUsername(res));
     res.set("Cache-Control", "private, no-store").json({
+      spaceId: pad.spaceId,
       slug: publicPadSlug(pad.slug),
       path: isDefaultPad(pad.slug) ? "/default" : `${config.padPath}/${pad.slug}`,
       displayName: pad.displayName ?? null,
@@ -447,7 +502,7 @@ export function createApp(store: PadStore, config: Config, options: AppOptions):
     const pad = getPadOrAnswer404(store, slug, res, (page) => {
       const filesView = req.query.view === "files" ? "?view=files" : "";
       const username = requestUsername(page);
-      const access = username ? {
+      const access = username && req.query.spaceId === undefined ? {
         username,
         action: `/api/pads/${encodeURIComponent(slug)}/access-requests${filesView}`,
         checkPath: `/api/pads/${encodeURIComponent(slug)}`,

@@ -1,5 +1,5 @@
 /** Append-only storage for opaque Yjs updates and attachment change markers. */
-import { mkdirSync, readFileSync, writeFileSync, truncateSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, truncateSync, openSync, fstatSync, readSync, closeSync } from "node:fs";
 import path from "node:path";
 import { isNotFound } from "./errors.ts";
 
@@ -68,6 +68,33 @@ function readFrames(file: string): { frames: Buffer[]; validBytes: number; lastU
     throw cause;
   }
 
+  const parsed = parseFrames(raw);
+  // Remove a torn tail so subsequent appends remain replayable.
+  if (parsed.validBytes < raw.length) truncateSync(file, parsed.validBytes);
+  return parsed;
+}
+
+/** Read without creating a room/log, truncating a torn tail, or reading an unbounded file. */
+export function readBoundedUpdates(padDir: string, maxBytes: number, maxFrames = 50_000): Buffer[] | null {
+  let fd: number;
+  try { fd = openSync(path.join(padDir, "sync.log"), "r"); }
+  catch (error) { if (isNotFound(error)) return []; throw error; }
+  try {
+    const size = fstatSync(fd).size;
+    if (size > maxBytes) return null;
+    const raw = Buffer.alloc(size);
+    let offset = 0;
+    while (offset < size) {
+      const count = readSync(fd, raw, offset, size - offset, offset);
+      if (!count) break;
+      offset += count;
+    }
+    const parsed = parseFrames(raw.subarray(0, offset), maxFrames);
+    return parsed.overflow ? null : parsed.frames;
+  } finally { closeSync(fd); }
+}
+
+function parseFrames(raw: Buffer, maxFrames = Infinity) {
   const frames: Buffer[] = [];
   let offset = 0;
   let revision = 0;
@@ -83,11 +110,10 @@ function readFrames(file: string): { frames: Buffer[]; validBytes: number; lastU
       if (!Number.isFinite(date.getTime())) break;
       lastUpdate = date.toISOString();
     }
+    if (revision >= maxFrames) return { frames, validBytes: offset, lastUpdate, revision, overflow: true };
     if (length || !timestamped) frames.push(raw.subarray(start, start + length));
     revision++;
     offset = start + length;
   }
-  // Remove a torn tail so subsequent appends remain replayable.
-  if (offset < raw.length) truncateSync(file, offset);
-  return { frames, validBytes: offset, lastUpdate, revision };
+  return { frames, validBytes: offset, lastUpdate, revision, overflow: false };
 }

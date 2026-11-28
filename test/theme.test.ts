@@ -74,11 +74,11 @@ test("the pages degrade sanely to narrow screens (Story 36)", async () => {
     const style = /<style>([\s\S]*?)<\/style>/.exec(body)?.[1] ?? "";
     assert.match(style, /\.topbar-inner, main \{ width: calc\(100% - 4rem\)/,
       "the desktop workspace uses the viewport width minus side margins");
-    assert.match(style, /@media \(pointer: fine\)[\s\S]*?min-height: 100dvh[\s\S]*?#note \.cm-editor \{[^}]*height: auto/,
-      "the desktop editor fills the available height with a minimum for short windows");
+    assert.match(style, /body \{[^}]*min-height: 100dvh[\s\S]*?#note \.cm-editor \{[^}]*height: auto/,
+      "the editor fills the available height with a minimum for short windows");
     assert.match(style, /\.workspace-toolbar, \.workspace-tabs,[^{]*\{[^}]*flex-wrap: wrap/, "workspace controls wrap on narrow screens");
-    assert.match(style, /@media \(max-width: 34rem\) \{\s*\.workspace-actions, #note-tools \{ width: 100%; \}\s*#note-tools \{ position: relative;[^}]*\}\s*#note-view \{ position: static; \}\s*#note-view \.menu-items \{ max-width: 100%; \}/,
-      "the mobile view menu is constrained by the full toolbar, even if its button wraps onto the left");
+    assert.match(style, /#note-tools \{[^}]*flex-wrap: nowrap/, "the editor toolbar stays on one row");
+    assert.match(style, /#editor-more > \.menu-items \{[^}]*overflow: auto/, "overflow actions are reachable on short screens");
     assert.match(style, /\.note-card:focus-within \{[^}]*outline: 2px solid var\(--accent\); outline-offset: 1px/,
       "the editor focus ring is drawn outside the card");
     assert.match(style, /@media \(pointer: coarse\)\s*\{[^}]*#paste-image[^}]*display: none/,

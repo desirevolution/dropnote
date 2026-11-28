@@ -11,7 +11,7 @@
  * otherwise (chunked transfer encoding), so a lying or missing length
  * cannot smuggle an oversized blob past the limits.
  */
-import { createReadStream, createWriteStream, mkdirSync, unlink, renameSync } from "node:fs";
+import { createReadStream, createWriteStream, mkdirSync, unlink, renameSync, openSync, unlinkSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import { BLOB_ID_PATTERN, type PadRecord, type PadStore } from "./store.ts";
@@ -20,6 +20,7 @@ import type { PinAuthority } from "./pin.ts";
 import { hasPadProof, writeFailure } from "./pad-access.ts";
 import { headerText, type scriptIngest } from "./script-ingest.ts";
 import { getPadOrAnswer404, requestUsername, type NoPadAnswer } from "./pad-request.ts";
+import { isNotFound } from "./errors.ts";
 
 /** The Attachment endpoints' answer for a Slug or blob that does not exist. */
 const noSuchAttachment: NoPadAnswer = (res) => {
@@ -101,6 +102,12 @@ export function attachmentsRouter({ store, config, pins, onAttachmentChanged, sc
       return;
     }
     const blobId = requestedId ?? randomBytes(16).toString("hex");
+    if (pad.retiredBlobIds?.[blobId]) {
+      req.pause();
+      res.once("finish", () => req.destroy());
+      res.status(409).json({ error: "This Attachment ID has been deleted. Choose a new upload ID." });
+      return;
+    }
     const stored = pad.blobs?.[blobId];
     if (stored) {
       req.pause();
@@ -252,7 +259,7 @@ export function attachmentsRouter({ store, config, pins, onAttachmentChanged, sc
       res.status(403).json({ error: "Unlock the encrypted Pad before downloading files" });
       return;
     }
-    if (pad.kind === "encrypted") res.set("Cache-Control", "no-store");
+    res.set("Cache-Control", "private, no-store");
     const blobId = req.params.blobId as string | undefined;
     if (typeof blobId !== "string" || !BLOB_ID_PATTERN.test(blobId) || !pad.blobs?.[blobId]) {
       noSuchAttachment(res);
@@ -261,11 +268,14 @@ export function attachmentsRouter({ store, config, pins, onAttachmentChanged, sc
 
     // The filename lives in the Pad's Yjs attachment list (client metadata);
     // a sanitized `name` query parameter lets the browser save a useful name.
+    // Open while the authorized identity is still current, rather than lazily
+    // reopening a reused slug after an asynchronous delete/recreate.
+    let fd: number;
+    try { fd = openSync(store.blobPath(slug, blobId), "r"); }
+    catch { noSuchAttachment(res); return; }
     res.attachment(sanitizeFilename(pad.kind === "encrypted" ? undefined : req.query.name));
     res.status(200);
-    // Opened lazily, after the response status is already decided, so an
-    // error (e.g. disk loss) still lands as a clean JSON 404.
-    const blob = createReadStream(store.blobPath(slug, blobId));
+    const blob = createReadStream(store.blobPath(slug, blobId), { fd, autoClose: true });
     blob.on("error", () => {
       // The index lists the blob but its bytes are gone (e.g. disk loss).
       if (res.headersSent) {
@@ -293,18 +303,18 @@ export function attachmentsRouter({ store, config, pins, onAttachmentChanged, sc
       rejectUnauthorizedWrite(req, res, failure);
       return;
     }
-    unlink(store.blobPath(slug, blobId), (unlinkError) => {
-      if (unlinkError && unlinkError.code !== "ENOENT") {
-        console.error("attachment deletion failed:", unlinkError);
-        res.status(500).json({ error: "Attachment deletion failed" });
-        return;
-      }
-      if (store.getPad(slug) === pad) {
-        store.forgetBlob(slug, blobId);
-        onAttachmentChanged?.(slug);
-      }
+    // Keep deletion, identity retirement and notification in one event-loop
+    // turn; a delayed unlink must never act on a recreated Space or blob.
+    try {
+      try { unlinkSync(store.blobPath(slug, blobId)); }
+      catch (error) { if (!isNotFound(error)) throw error; }
+      store.forgetBlob(slug, blobId, true);
+      onAttachmentChanged?.(slug);
       res.status(204).end();
-    });
+    } catch (error) {
+      console.error("attachment deletion failed:", error);
+      res.status(500).json({ error: "Attachment deletion failed" });
+    }
   }
 
   function limitViolated(size: number): AttachmentLimitViolation | null {

@@ -3,6 +3,7 @@
  * Pad-scoped endpoint loads its Pad here, so a missing or expired Pad is
  * answered the same way (404) everywhere instead of each site re-deciding.
  */
+import { matchesSpaceId } from "./space-identity.ts";
 import { padRole } from "./pad-access.ts";
 import type { Response } from "express";
 import type { PadRecord, PadStore } from "./store.ts";
@@ -31,7 +32,8 @@ export function getPadOrAnswer404(
 ): PadRecord | undefined {
   const username = requestUsername(res);
   const pad = store.resolvePad(slug, username);
-  if (!pad || !padRole(pad, username)) {
+  if (!pad || !padRole(pad, username) || !matchesSpaceId(pad.spaceId, res.req.get("x-space-id")) ||
+      !matchesSpaceId(pad.spaceId, res.req.query.spaceId)) {
     answer(res);
     return undefined;
   }

@@ -43,6 +43,7 @@ export function startLiveSync(doc, { metadata, key, proof, cursorKey, onState, o
     if (!navigator.onLine) return;
     const url = new URL(`/sync/${encodeURIComponent(metadata.slug)}`, location.href);
     url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    if (metadata.spaceId) url.searchParams.set("spaceId", metadata.spaceId);
     if (pin) url.searchParams.set("token", pin);
     const connection = new WebSocket(url, proof ? ["dropnote", `proof.${proof}`] : ["dropnote"]);
     socket = connection;
@@ -98,7 +99,7 @@ export function startLiveSync(doc, { metadata, key, proof, cursorKey, onState, o
           revision = Math.max(revision, message.revision);
         }
         if (message.type === "pad-info") {
-          if (message.createdAt !== metadata.createdAt) return unavailable();
+          if (message.createdAt !== metadata.createdAt || (metadata.spaceId && message.spaceId !== metadata.spaceId)) return unavailable();
           onExpiry(message.expiresAt);
         } else if (message.type === "replay-done") {
           attempts = 0;
@@ -159,6 +160,7 @@ export function startLiveSync(doc, { metadata, key, proof, cursorKey, onState, o
     try {
       const response = await fetch(`/api/pads/${encodeURIComponent(metadata.slug)}`, {
         cache: "no-store", signal: AbortSignal.timeout(3_000),
+        headers: metadata.spaceId ? { "x-space-id": metadata.spaceId } : {},
       });
       if (stopped) return;
       if (response.status === 404) return unavailable();

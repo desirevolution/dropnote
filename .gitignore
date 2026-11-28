@@ -6,3 +6,6 @@ npm-debug.log*
 !.env.example
 .scratch/
 /public/js/*.bundle.js
+
+.venv-e2e/
+__pycache__/

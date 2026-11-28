@@ -211,7 +211,7 @@ async function createPad(probe: Probe, slug: string): Promise<void> {
 }
 
 test("deployment: the image serves the API smoke facts as a non-root container", async (t) => {
-  await requireDocker(t);
+  if (!await requireDocker(t)) return;
   await ensureImage();
 
   const volumeDir = await makeTempDataDir();
@@ -241,7 +241,7 @@ test("deployment: the image serves the API smoke facts as a non-root container",
 });
 
 test("deployment: data in the volume survives container replacement", async (t) => {
-  await requireDocker(t);
+  if (!await requireDocker(t)) return;
   await ensureImage();
 
   const volumeDir = await makeTempDataDir();
@@ -280,7 +280,7 @@ test("deployment: data in the volume survives container replacement", async (t) 
 });
 
 test("deployment: a data directory with the wrong owner fails boot with the permission error", async (t) => {
-  await requireDocker(t);
+  if (!await requireDocker(t)) return;
   await ensureImage();
 
   const volumeDir = await makeTempDataDir();

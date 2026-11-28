@@ -16,7 +16,7 @@ function requestLabel(count) {
   return t(count === 1 ? "{count} access request" : "{count} access requests", { count });
 }
 
-export function initSpaceAccess(api, deleteSpace, unreadGrantId) {
+export function initSpaceAccess(api, deleteSpace, unreadGrantId, onAccessChanged = () => {}, onSpaces = () => {}) {
   const openAccess = document.querySelector('[data-open-dialog="space-access-dialog"]');
   const owned = $("owned-spaces-list");
   const ownedStatus = $("owned-spaces-status");
@@ -83,6 +83,7 @@ export function initSpaceAccess(api, deleteSpace, unreadGrantId) {
     const { spaces, sharedSpaces = [] } = await getJson("/api/my-spaces", { signal: AbortSignal.timeout(10_000) });
     if (request > appliedRequest) {
       latestOwned = spaces;
+      onSpaces([...spaces, ...sharedSpaces]);
       for (const space of spaces) {
         const detail = ownedDetails.get(space.slug);
         if (detail) showChangeDetails(detail, space, ownedLabels(space));
@@ -196,10 +197,12 @@ export function initSpaceAccess(api, deleteSpace, unreadGrantId) {
     const connection = new WebSocket(url, "dropnote");
     socket = connection;
     connection.onopen = () => {
+      onAccessChanged();
       void refreshBadge();
       if ($("space-access-dialog")?.open) refreshAccessDialog();
     };
     connection.onmessage = () => {
+      onAccessChanged();
       void refreshBadge();
       if ($("space-access-dialog")?.open) refreshAccessDialog();
     };

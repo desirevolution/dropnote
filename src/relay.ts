@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer, WebSocket } from "ws";
-import { openUpdateLog, type UpdateLog } from "./update-log.ts";
+import { openUpdateLog, readBoundedUpdates, type UpdateLog } from "./update-log.ts";
 import type { GrantRole, PadRecord, PadStore } from "./store.ts";
 import { canEdit, hasPadProof, padRole } from "./pad-access.ts";
 import type { PinAuthority } from "./pin.ts";
@@ -12,6 +12,8 @@ import type { PinAuthority } from "./pin.ts";
 import { proxyUsername, validRequestOrigin } from "./proxy-user.ts";
 import { isGuestHost } from "./guest.ts";
 import type { Config } from "./config.ts";
+import { MAX_REFERENCE_REPLAY_BYTES, MAX_REFERENCE_REPLAY_FRAMES } from "./reference-replay.ts";
+import { matchesSpaceId } from "./space-identity.ts";
 
 const SYNC_PATH = /^\/sync\/([a-z0-9-]+)(?:\?.*)?$/;
 
@@ -82,7 +84,7 @@ export class SyncRelay {
         return;
       }
       const pad = this.#store.resolvePad(slug, username);
-      if (!pad || !padRole(pad, username)) {
+      if (!pad || !padRole(pad, username) || !matchesSpaceId(pad.spaceId, expectedSpaceId(request))) {
         rejectUpgrade(socket, 404, `No Pad lives at this address`);
         return;
       }
@@ -94,7 +96,7 @@ export class SyncRelay {
       this.#wss.handleUpgrade(request, socket, head, (client) => {
         this.#wss.emit("connection", client);
         try {
-          this.#serve(pad.slug, token, client, username);
+          this.#serve(pad.slug, pad.spaceId, token, client, username);
         } catch (error) {
           console.error("Pad replay could not start:", error);
           client.close(1011, "Pad replay unavailable");
@@ -111,6 +113,11 @@ export class SyncRelay {
 
   guestUpdates(pad: PadRecord): Buffer[] {
     return this.#logFor(pad.slug).updates();
+  }
+
+  referenceUpdates(pad: PadRecord): Buffer[] | null {
+    if (this.#store.getLivePad(pad.slug) !== pad) return null;
+    return this.#logs.get(pad.slug)?.updates() ?? readBoundedUpdates(this.#store.padDir(pad.slug), MAX_REFERENCE_REPLAY_BYTES + 12 * MAX_REFERENCE_REPLAY_FRAMES, MAX_REFERENCE_REPLAY_FRAMES);
   }
 
   revision(pad: PadRecord) {
@@ -190,7 +197,11 @@ export class SyncRelay {
     this.#logs.delete(slug);
   }
 
-  #serve(slug: string, token: string | undefined, client: WebSocket, username: string | null): void {
+  #serve(slug: string, spaceId: string, token: string | undefined, client: WebSocket, username: string | null): void {
+    if (this.#store.getLivePad(slug)?.spaceId !== spaceId) {
+      client.close(4004, "Pad unavailable");
+      return;
+    }
     if (username !== null) this.#users.set(client, username);
     const log = this.#logFor(slug);
     const room = this.#roomFor(slug);
@@ -200,7 +211,7 @@ export class SyncRelay {
     client.on("message", (data: WebSocket.RawData, isBinary: boolean) => {
       if (client.readyState !== WebSocket.OPEN) return;
       const pad = this.#store.getLivePad(slug);
-      if (!pad || !padRole(pad, username)) {
+      if (!pad || pad.spaceId !== spaceId || !padRole(pad, username)) {
         client.close(4004, "Pad unavailable");
         return;
       }
@@ -263,7 +274,7 @@ export class SyncRelay {
       client.close(4004, "Pad unavailable");
       return;
     }
-    sendControl(client, { type: "pad-info", createdAt: pad.createdAt, expiresAt: pad.expiresAt });
+    sendControl(client, { type: "pad-info", spaceId: pad.spaceId, createdAt: pad.createdAt, expiresAt: pad.expiresAt });
     for (const update of log.updates()) client.send(update);
     const revision = log.current().revision;
     this.#deliveredRevisions.set(client, revision);
@@ -302,8 +313,19 @@ function slugOf(request: IncomingMessage): string | null {
 
 /** The capability token a client presented on its sync connection, if any. */
 function tokenOf(request: IncomingMessage): string | undefined {
+  return queryOf(request, "token");
+}
+
+function expectedSpaceId(request: IncomingMessage): unknown {
   try {
-    return new URL(request.url ?? "/", "http://relay.invalid").searchParams.get("token") ?? undefined;
+    const ids = new URL(request.url ?? "/", "http://relay.invalid").searchParams.getAll("spaceId");
+    return ids.length > 1 ? ids : ids[0];
+  } catch { return null; }
+}
+
+function queryOf(request: IncomingMessage, key: string): string | undefined {
+  try {
+    return new URL(request.url ?? "/", "http://relay.invalid").searchParams.get(key) ?? undefined;
   } catch {
     return undefined;
   }

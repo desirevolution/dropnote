@@ -93,6 +93,7 @@ export function initPadActions() {
   const dialog = form.closest("dialog");
   let wordList;
   let revision = 0;
+  let createContext = null;
 
   function showPassphrase(show) {
     passphrase.type = show ? "text" : "password";
@@ -114,6 +115,8 @@ export function initPadActions() {
   });
   reveal.addEventListener("click", () => showPassphrase(passphrase.type === "password"));
   dialog.addEventListener("close", () => {
+    if (dialog.open) return;
+    createContext = null;
     revision += 1;
     passphrase.value = suggestedPassword = "";
     showPassphrase(false);
@@ -170,6 +173,7 @@ export function initPadActions() {
     if (submit.disabled) return;
     error.hidden = true;
     submit.disabled = true;
+    const context = createContext;
     const secret = encrypted.checked ? passphrase.value : null;
     const slug = slugValue();
     const displayName = displayNameInput.value.trim();
@@ -208,8 +212,11 @@ export function initPadActions() {
       syncUrlPreview();
       syncChoice();
       syncExpiry();
-      if (dialog.open) dialog.close();
-      openCreatedSpace(pad, secret);
+      const stillActive = dialog.open && createContext === context;
+      if (stillActive) { createContext = null; dialog.close(); }
+      if (context) {
+        if (stillActive) context.onCreated(pad);
+      } else if (stillActive) openCreatedSpace(pad, secret);
     } catch (cause) {
       error.textContent = t(cause.message || "Could not create the space.");
       error.hidden = false;
@@ -217,6 +224,19 @@ export function initPadActions() {
       submit.disabled = false;
     }
   });
+  return {
+    createForReference(name, onCreated) {
+      if (dialog.open || submit.disabled) return false;
+      createContext = { onCreated };
+      displayNameInput.value = name;
+      error.hidden = true;
+      dialog.showModal();
+      return true;
+    },
+    cancelReferenceCreation() {
+      if (createContext && dialog.open) { createContext = null; dialog.close(); }
+    },
+  };
 }
 
 export function randomItems(items, count) {

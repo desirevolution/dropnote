@@ -8,7 +8,7 @@ import { secretLink } from "./share-secret.js";
 
 const $ = (id) => document.getElementById(`guest-link-${id}`);
 
-export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
+export function initGuestLinks(api, encryption, getProof, getKey, getDocument, spaceId) {
   const dialog = $("dialog");
   if (!dialog) return;
   const open = document.querySelector('[data-open-dialog="guest-link-dialog"]');
@@ -165,7 +165,7 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
       try {
         if (passphrase.length >= 12 && passphrase.length <= 256) {
           const response = await fetch(`${api}/guest-link/check-password`, {
-            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: passphrase }),
+            method: "POST", headers: { "Content-Type": "application/json", "X-Space-Id": spaceId }, body: JSON.stringify({ password: passphrase }),
           });
           valid = response.ok;
         }
@@ -181,12 +181,13 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
     }, 350);
   }
 
-  async function request(method = "GET", body, proof) {
-    const response = await fetch(`${api}/guest-link`, {
+  async function request(method = "GET", body, proof, suffix = "") {
+    const response = await fetch(`${api}/guest-link${suffix}`, {
       method,
       cache: "no-store",
       signal: AbortSignal.timeout(10_000),
-      ...(body ? { body: JSON.stringify(body), headers: { "Content-Type": "application/json", ...(proof ? { "X-Pad-Proof": proof } : {}) } } : {}),
+      headers: { "X-Space-Id": spaceId, ...(body ? { "Content-Type": "application/json" } : {}), ...(proof ? { "X-Pad-Proof": proof } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
     });
     if (response.ok && method === "DELETE") return null;
     const data = await response.json().catch(() => null);
@@ -326,7 +327,10 @@ export function initGuestLinks(api, encryption, getProof, getKey, getDocument) {
     try {
       if (encryption) {
         const doc = getDocument();
-        const [proofHash, snapshot] = await Promise.all([guestProofHash(key), sealGuestSnapshot(key, doc)]);
+        const { fileIds } = await request("GET", undefined, proof, "/files");
+        if (getKey() !== key || getDocument() !== doc) throw new Error(t("Wait for the space to finish syncing before creating a snapshot."));
+        if (!Array.isArray(fileIds)) throw new Error(t("Could not update the guest link."));
+        const [proofHash, snapshot] = await Promise.all([guestProofHash(key), sealGuestSnapshot(key, doc, spaceId, new Set(fileIds))]);
         if (getKey() !== key || getDocument() !== doc) {
           feedback.textContent = t("Wait for the space to finish syncing before creating a snapshot.");
           return;

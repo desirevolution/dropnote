@@ -1,5 +1,6 @@
+import { sanitizeGuestNote } from "./internal-references.ts";
 import { createHash, createHmac, randomBytes, scrypt } from "node:crypto";
-import { resolve } from "node:path";
+import { openBlobRead } from "./blob-read.ts";
 import { fileURLToPath } from "node:url";
 import { Router, json, type ErrorRequestHandler, type RequestHandler, type Response } from "express";
 import * as Y from "yjs";
@@ -9,7 +10,7 @@ import { detectLanguage } from "./locale.ts";
 import { hasPadProof, padRole } from "./pad-access.ts";
 import { getPadOrAnswer404, requestUsername } from "./pad-request.ts";
 import { RateLimitCounter, rateLimiter } from "./ratelimit.ts";
-import { SHARE_FRAGMENT_SCRIPT, STRIP_SHARE_FRAGMENT_SCRIPT } from "./share-fragment.ts";
+import { GUEST_CSP, GUEST_FONT_PATH } from "./guest-security.ts";
 import { secureEquals } from "./secure-compare.ts";
 import { BLOB_ID_PATTERN, isDefaultPad, type GuestLink, type PadRecord, type PadStore } from "./store.ts";
 import { openUpdateLog } from "./update-log.ts";
@@ -17,8 +18,6 @@ import { openUpdateLog } from "./update-log.ts";
 const credentialPattern = /^[A-Za-z0-9_-]{43}$/;
 const maxSnapshotBytes = 1024 * 1024;
 const durations = { "1h": 3_600, "24h": 86_400, "7d": 604_800 };
-const fragmentScriptHashes = [SHARE_FRAGMENT_SCRIPT, STRIP_SHARE_FRAGMENT_SCRIPT]
-  .map((script) => `'sha256-${createHash("sha256").update(script).digest("base64")}'`).join(" ");
 const bundle = fileURLToPath(new URL("../public/js/guest.bundle.js", import.meta.url));
 
 function randomCredential(): string {
@@ -100,6 +99,13 @@ export function guestManagement(store: PadStore, config: Config) {
   }
 
   router.get(path, owner, (_req, res) => sendLink(res, res.locals.guestPad));
+  // Before sealing, the owner can intersect the local Yjs list with stored blobs.
+  // No plaintext attachment metadata or Note is returned by this endpoint.
+  router.get(path + "/files", owner, (req, res) => {
+    const pad: PadRecord = res.locals.guestPad;
+    if (!hasPadProof(pad, req.get("X-Pad-Proof"))) return void res.sendStatus(403);
+    res.json({ fileIds: Object.keys(pad.blobs ?? {}) });
+  });
   router.put(path, owner, json({ limit: "2mb" }), async (req, res) => {
     const pad: PadRecord = res.locals.guestPad;
     const previous = pad.guestLink;
@@ -136,7 +142,10 @@ export function guestManagement(store: PadStore, config: Config) {
       const files: Record<string, string> = {};
       for (const id of fileIds) {
         const blob = pad.blobs?.[id];
-        if (blob) files[id] = blob.createdAt;
+        // A deletion between the owner preflight and sealing must not silently
+        // leave a stale reference inside a newly published encrypted snapshot.
+        if (!blob) return void res.status(409).json({ error: "The file list changed. Please create the snapshot again." });
+        files[id] = blob.createdAt;
       }
       snapshot = { ciphertext, files, capturedAt: new Date().toISOString(), displayName: pad.displayName ?? pad.slug };
       credentials = { proofHash };
@@ -202,11 +211,14 @@ export function guestRouter(
       "Referrer-Policy": "no-referrer",
       "X-Content-Type-Options": "nosniff",
       "X-Robots-Tag": "noindex, nofollow",
-      "Content-Security-Policy": `default-src 'none'; script-src 'self' ${fragmentScriptHashes}; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+      "Content-Security-Policy": GUEST_CSP,
     });
     next();
   });
   router.get("/g/client.js", (_req, res) => res.sendFile(bundle, { cacheControl: false }));
+  // Only the shared public editor font, never the main application's static root.
+  router.get(GUEST_FONT_PATH, (_req, res) => res.sendFile(
+    fileURLToPath(new URL("../public/fonts/IBMPlexMono-Regular.woff2", import.meta.url)), { cacheControl: false }));
   router.use(rateLimiter(new RateLimitCounter({
     max: config.rateLimitMax, windowMs: config.rateLimitWindowSeconds * 1_000,
   })));
@@ -253,11 +265,12 @@ export function guestRouter(
       if (!guest || guest.link !== link || guest.link.redemption) return void res.sendStatus(404);
     }
     const plain = guest.encryption ? null : currentContent(guest.pad);
+    const files = plain?.files.filter(({ blobId }) => guest!.pad.blobs?.[blobId]) ?? [];
     const response = {
       displayName: guest.link.snapshot?.displayName ?? guest.pad.displayName ?? guest.pad.slug,
       expiresAt: guest.status.expiresAt,
       ...(plain
-        ? { note: plain.note, files: plain.files.filter(({ blobId }) => guest.pad.blobs?.[blobId]) }
+        ? { note: sanitizeGuestNote(plain.note, new Set(files.map(file => file.blobId)), guest.pad.spaceId), files }
         : { snapshot: guest.link.snapshot!.ciphertext, capturedAt: guest.link.snapshot!.capturedAt,
             fileIds: Object.entries(guest.link.snapshot!.files).filter(([id, createdAt]) =>
               guest.pad.blobs?.[id]?.createdAt === createdAt).map(([id]) => id) }),
@@ -293,7 +306,20 @@ export function guestRouter(
     const listed = guest.encryption ? guest.link.snapshot?.files[id] === blob.createdAt :
       currentContent(guest.pad).files.some((file) => file.blobId === id);
     if (!listed) return void res.sendStatus(404);
-    res.type("application/octet-stream").sendFile(resolve(store.blobPath(guest.pad.slug, id)), { cacheControl: false });
+    // Open synchronously while the authorized Pad/blob identity is current.
+    // sendFile opens by pathname asynchronously, which permits slug reuse races.
+    let opened: ReturnType<typeof openBlobRead>;
+    try { opened = openBlobRead(store.blobPath(guest.pad.slug, id)); }
+    catch { return void res.sendStatus(404); }
+    const { stream, size } = opened;
+    res.status(200).type("application/octet-stream").set("Content-Length", String(size));
+    res.once("close", () => stream.destroy());
+    stream.on("error", () => {
+      if (res.headersSent) res.destroy();
+      else { res.removeHeader("Content-Length"); res.sendStatus(404); }
+    });
+    if (req.method === "HEAD") { stream.destroy(); res.end(); return; }
+    stream.pipe(res);
   });
 
   const onError: ErrorRequestHandler = (error, _req, res, next) => {

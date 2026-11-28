@@ -34,6 +34,7 @@ test("an uploaded Attachment can be downloaded with its original bytes", async (
 
     const download = await fetch(`${attachmentsUrl(server.baseUrl)}/${uploaded.blobId}`);
     assert.equal(download.status, 200, "the Attachment downloads");
+    assert.match(download.headers.get("cache-control") ?? "", /no-store/);
     const bytes = Buffer.from(await download.arrayBuffer());
     assert.deepEqual(bytes, original, "download delivers the original file bytes");
   } finally {

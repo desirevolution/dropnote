@@ -1,3 +1,6 @@
+import { referenceDeleteMessage } from "./reference-deletion.js";
+import { formatReference } from "../src/internal-references.ts";
+import { copyText } from "./pad-actions.js";
 import { createTransferSink, KEEP_SAVED_MS, sweepStaleTemps } from "./transfer-sink.js";
 import { language, t } from "./i18n.js";
 /**
@@ -19,6 +22,7 @@ import { language, t } from "./i18n.js";
  * Plain Pads keep the direct upload/download they always had.
  */
 
+import { createReferenceFiles, ReferenceAccessError } from "./reference-files.js";
 import { DecryptionError } from "./crypto.js";
 import { decryptAttachment, encryptAttachment } from "./encrypted-attachments.js";
 
@@ -39,13 +43,15 @@ const pasteTarget = $("image-paste-target");
 const previewTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp", "image/x-icon"]);
 const imageExtensions = new Map([["image/jpeg", "jpg"], ["image/png", "png"], ["image/gif", "gif"], ["image/webp", "webp"], ["image/avif", "avif"], ["image/bmp", "bmp"], ["image/svg+xml", "svg"]]);
 
-export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUploaded }) {
+export function initAttachments(ydoc, slug, { key, spaceId, writeHeaders, onCount, onUploaded }) {
   const attachments = ydoc.getArray(ATTACHMENTS_TYPE);
+  const references = createReferenceFiles();
   const activeTransfers = new AbortController();
   const { signal } = activeTransfers;
   let canEdit = false;
   let dragDepth = 0;
   let preview;
+  let highlightedFile;
   let openingImage = false;
   let readingImages = false;
   const imageDialog = $("image-dialog");
@@ -234,6 +240,7 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
   function rowFor(entry) {
     const row = document.createElement("li");
     row.dataset.blobId = entry.blobId;
+    if (entry.blobId === highlightedFile) row.classList.add("reference-file-highlight");
     const info = document.createElement("div");
     info.className = "file-info";
 
@@ -268,7 +275,7 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
 
     const action = key ? button("Download", () => download(entry, false)) : document.createElement("a");
     if (!key) {
-      action.href = attachmentUrl(slug, entry.blobId, entry.name);
+      action.href = attachmentUrl(slug, entry.blobId, entry.name, spaceId);
       action.download = entry.name;
       action.textContent = t("Download");
     }
@@ -276,11 +283,18 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
     action.setAttribute("aria-label", t("Download {name}", { name: entry.name }));
     const actions = document.createElement("div");
     actions.className = "file-actions";
-    actions.append(action);
+    const reference = button("Copy reference", () => {
+      try {
+        void copyText(formatReference({ kind: "file", spaceId, blobId: entry.blobId, label: entry.name, alias: false }), $("copy-status"), t("Reference copied."));
+      } catch { showError(t("The reference name is invalid or too long.")); }
+    });
+    reference.className = "file-action quiet";
+    actions.append(action, reference);
     row.append(info, actions);
     if (canEdit) {
       const remove = button("Remove", async () => {
-        if (!canEdit || !window.confirm(t("Remove “{name}” from this pad?", { name: entry.name }))) return;
+        if (!canEdit || !window.confirm(referenceDeleteMessage(t("Remove “{name}” from this pad?", { name: entry.name }),
+          ydoc.getText("note").toString(), spaceId, new Set([entry.blobId])))) return;
         remove.disabled = true;
         try {
           showError(null);
@@ -348,56 +362,99 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
     }
   }
 
-  async function download(entry, view) {
-    if (view && openingImage) return;
+  async function download(entry, view, foreign = null, onProgress = null) {
+    if (view && openingImage) {
+      if (foreign) throw new ReferenceAccessError("busy", "An image preview is already loading.");
+      return;
+    }
     if (view) openingImage = true;
     showError(null);
-    const row = progressRowFor(entry, key ? "Downloading and decrypting" : "Downloading");
+    const transferKey = foreign ? foreign.key : key;
+    const transferSignal = foreign ? AbortSignal.any([signal, foreign.signal]) : signal;
+    const row = progressRowFor(entry, transferKey ? "Downloading and decrypting" : "Downloading");
     uploadArea.append(row);
+    const progress = bytes => {
+      const fraction = entry.size ? Math.min(1, bytes / entry.size) : 1;
+      setProgress(row, fraction);
+      onProgress?.(bytes, entry.size);
+    };
     let sink;
     let retained = false;
     try {
-      const response = await fetch(attachmentUrl(slug, entry.blobId), { signal, headers: key ? writeHeaders() : undefined });
-      if (!response.ok) throw new Error(await serverErrorOf(response));
+      transferSignal.throwIfAborted();
+      const headers = foreign ? (foreign.proof ? { "x-pad-proof": foreign.proof } : {}) : transferKey ? writeHeaders() : undefined;
+      const response = await fetch(attachmentUrl(foreign?.slug ?? slug, entry.blobId, null, foreign?.spaceId ?? spaceId), {
+        signal: transferSignal, headers, ...(foreign ? { cache: "no-store", redirect: "error" } : {}),
+      });
+      if (!response.ok) {
+        const message = await serverErrorOf(response);
+        if (foreign) throw new ReferenceAccessError(response.status === 404 ? "unavailable" : response.status === 403 ? "denied" : "request-failed", message);
+        throw new Error(message);
+      }
       let body;
-      if (key) {
+      if (transferKey || foreign) {
         sink = await createTransferSink(entry.size);
-        for await (const chunk of decryptAttachment(key, response.body, {
-          onProgress: (bytes) => setProgress(row, bytes / entry.size),
-        })) {
-          if (signal.aborted) return;
-          if (!chunk.ok) throw chunk.error;
-          await sink.write(chunk.bytes);
+        if (transferKey) {
+          let bytes = 0;
+          for await (const chunk of decryptAttachment(transferKey, response.body)) {
+            transferSignal.throwIfAborted();
+            if (!chunk.ok) throw chunk.error;
+            await sink.write(chunk.bytes);
+            bytes += chunk.bytes.length;
+            if (foreign && bytes > entry.size) throw new Error(t("The file size does not match the reference metadata."));
+            progress(bytes);
+          }
+        } else {
+          const reader = response.body.getReader();
+          try {
+            let bytes = 0;
+            for (;;) {
+              transferSignal.throwIfAborted();
+              const { done, value } = await reader.read();
+              if (done) break;
+              await sink.write(value);
+              bytes += value.length;
+              if (bytes > entry.size) throw new Error(t("The file size does not match the reference metadata."));
+              progress(bytes);
+            }
+          } finally { await reader.cancel().catch(() => {}); }
         }
         body = await sink.close();
       } else {
         body = await response.blob();
       }
-      if (signal.aborted) return;
+      transferSignal.throwIfAborted();
+      if (foreign && body.size !== entry.size) throw new Error(t("The file size does not match the reference metadata."));
+      progress(body.size);
       const blob = view ? body.slice(0, body.size, entry.contentType) : body;
       const url = URL.createObjectURL(blob);
-      retained = true;
       if (view) {
         closePreview();
-        preview = { url, blob, dispose: () => sink?.dispose() };
+        preview = { url, blob, foreign: Boolean(foreign && foreign.spaceId !== spaceId), dispose: () => sink?.dispose() };
         copyImage.disabled = !canCopyImage;
         imageCopyStatus.textContent = canCopyImage ? "" : t("Image copying is unavailable here. Download it from the file list.");
         $("image-title").textContent = entry.name;
         fullImage.alt = entry.name;
         fullImage.src = url;
-        if (!imageDialog.open) imageDialog.showModal();
+        try { if (!imageDialog.open) imageDialog.showModal(); }
+        catch (error) { closePreview(); throw error; }
+        retained = true;
       } else {
         const anchor = document.createElement("a");
         anchor.href = url;
         anchor.download = entry.name;
-        anchor.click();
-        setTimeout(() => {
-          URL.revokeObjectURL(url);
-          void sink?.dispose();
-        }, KEEP_SAVED_MS);
+        try { anchor.click(); }
+        finally {
+          setTimeout(() => {
+            URL.revokeObjectURL(url);
+            void sink?.dispose();
+          }, KEEP_SAVED_MS);
+          retained = true;
+        }
       }
     } catch (error) {
-      if (!signal.aborted) showError(error instanceof DecryptionError ? t("This file could not be decrypted.") : error.message);
+      if (foreign) throw error;
+      if (!transferSignal.aborted) showError(error instanceof DecryptionError ? t("This file could not be decrypted.") : error.message);
     } finally {
       row.remove();
       if (view) openingImage = false;
@@ -435,6 +492,41 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
   }
 
   return {
+    highlightReferenceFile(blobId) {
+      const row = [...list.children].find(item => item.dataset.blobId === blobId);
+      if (!row) return false;
+      highlightedFile = blobId;
+      for (const item of list.children) item.classList.toggle("reference-file-highlight", item === row);
+      row.scrollIntoView({ block: "nearest" });
+      return true;
+    },
+    // Shared by the reference picker and inline file actions in the next packages.
+    browseReferences(id, options) { return references.browse(id, options); },
+    localReferenceFiles() {
+      return attachments.toArray().filter(entry => entry && typeof entry.name === "string" && /^[0-9a-f]{32}$/.test(entry.blobId));
+    },
+    referenceName(id, blobId) {
+      return id === spaceId && blobId ? attachments.toArray().find(entry => entry?.blobId === blobId)?.name : references.name(id, blobId);
+    },
+    clearReferenceCache() {
+      references.clear();
+      if (preview?.foreign) {
+        closePreview();
+        if (imageDialog.open) imageDialog.close();
+      }
+    },
+    openReferencedFile(id, blobId, { action = "open", onProgress, ...options } = {}) {
+      if (id === spaceId) {
+        const entry = attachments.toArray().find(item => item?.blobId === blobId);
+        if (!entry) return Promise.reject(new ReferenceAccessError("unavailable", "The referenced file is no longer available."));
+        // Use the current document's key, not another password prompt.
+        return download(entry, action !== "download" && previewTypes.has(entry.contentType), {
+          slug, spaceId, key, proof: writeHeaders()["x-pad-proof"], signal: options.signal ?? signal,
+        }, onProgress);
+      }
+      return references.open(id, blobId, options, (entry, context) =>
+        download(entry, action !== "download" && previewTypes.has(entry.contentType), context, onProgress));
+    },
     setEditing(enabled) {
       if (enabled === canEdit) return;
       canEdit = enabled;
@@ -464,6 +556,7 @@ export function initAttachments(ydoc, slug, { key, writeHeaders, onCount, onUplo
       }
     },
     destroy() {
+      references.clear();
       activeTransfers.abort();
       attachments.unobserve(render);
       closePreview();
@@ -571,9 +664,12 @@ async function sinkThrough(stream, sink, signal) {
   }
 }
 
-function attachmentUrl(slug, blobId, name = null) {
+function attachmentUrl(slug, blobId, name = null, spaceId = null) {
   const base = `/api/pads/${encodeURIComponent(slug)}/attachments/${encodeURIComponent(blobId)}`;
-  return name === null ? base : `${base}?name=${encodeURIComponent(name)}`;
+  const params = new URLSearchParams();
+  if (name !== null) params.set("name", name);
+  if (spaceId) params.set("spaceId", spaceId);
+  return params.size ? `${base}?${params}` : base;
 }
 
 /** Shows (or clears, with null) the upload/removal error line. */

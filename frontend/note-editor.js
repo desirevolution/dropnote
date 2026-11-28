@@ -1,12 +1,14 @@
 import * as Y from "yjs";
 import { Compartment, EditorState, StateEffect, StateField } from "@codemirror/state";
-import { Decoration, EditorView, WidgetType, keymap, lineNumbers, placeholder } from "@codemirror/view";
+import { Decoration, EditorView, WidgetType, keymap, lineNumbers, highlightActiveLineGutter, placeholder } from "@codemirror/view";
 import { defaultKeymap } from "@codemirror/commands";
 import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
 
 import { t } from "./i18n.js";
 import { createSmartNote } from "./smart-note.js";
 import { createNoteSearch } from "./note-search.js";
+import { captureInsertion, resolveInsertion } from "./insertion-anchor.js";
+import { referenceTrigger } from "../src/reference-insertion.ts";
 import { editorPosition } from "../src/smart-note.ts";
 
 const colors = ["#cf4c73", "#478bf3", "#3d9b6d", "#cb7723", "#9061dd", "#2098a9"];
@@ -36,7 +38,7 @@ class Cursor extends WidgetType {
   }
 }
 
-export function initNoteEditor(note, { onText, onCursor, onHistory, positionStorage }) {
+export function initNoteEditor(note, { onText, onCursor, onHistory, onMetrics, positionStorage, onReference, references }) {
   const setMarkers = StateEffect.define();
   const editing = new Compartment();
   const wrapping = new Compartment();
@@ -54,7 +56,7 @@ export function initNoteEditor(note, { onText, onCursor, onHistory, positionStor
     },
     provide: (field) => EditorView.decorations.from(field),
   });
-  let writable = false;
+  let writable = false, destroyed = false, referenceRefreshQueued = false;
   let timer;
   let visibleCursor = false;
   const undoManager = new Y.UndoManager(note);
@@ -62,8 +64,8 @@ export function initNoteEditor(note, { onText, onCursor, onHistory, positionStor
     undoManager.stopCapturing();
     try { run(); } finally { undoManager.stopCapturing(); }
   };
-  const smart = createSmartNote({ onEdit: isolatedEdit, status: document.getElementById("note-clipboard-status") });
-  const search = createNoteSearch({ onEdit: isolatedEdit });
+  const smart = createSmartNote({ references, onEdit: isolatedEdit, status: document.getElementById("note-clipboard-status") });
+  const search = createNoteSearch({ onEdit: isolatedEdit, referenceLabel: references?.label });
   let positionReady = false, positionTimer, restoring = false, scrollPosition = [0, 0], positionFrame;
   function visible() { return editor.dom.getClientRects().length > 0 && !editor.dom.closest("[hidden]"); }
   function captureScroll() {
@@ -177,12 +179,21 @@ export function initNoteEditor(note, { onText, onCursor, onHistory, positionStor
           ...binding,
           run: (view) => !writable || binding.run(view),
         })),
+        { key: "Mod-k", run: () => { if (!writable || !onReference) return false; onReference(); return true; } },
         ...defaultKeymap,
       ]),
       yCollab(note, null, { undoManager }),
       markers,
       EditorView.updateListener.of((update) => {
         if (update.docChanged) onText(update.state.doc.toString());
+        if (update.docChanged || update.selectionSet) onMetrics?.(update.state);
+        if (writable && onReference && update.docChanged && update.transactions.some(tr => tr.isUserEvent("input.type"))) {
+          const selection = update.state.selection.main;
+          const from = selection.empty ? referenceTrigger(update.state.doc.toString(), selection.head) : null;
+          if (from !== null) queueMicrotask(() => {
+            if (writable && editor.state === update.state) onReference({ from, to: selection.head, trigger: true });
+          });
+        }
         if (update.docChanged || update.selectionSet) queuePosition();
         if (update.docChanged || update.selectionSet || update.focusChanged) {
           queueCursor();
@@ -193,6 +204,7 @@ export function initNoteEditor(note, { onText, onCursor, onHistory, positionStor
     ],
   });
   onText(note.toString());
+  onMetrics?.(editor.state);
   editor.scrollDOM.addEventListener("scroll", queuePosition, { passive: true });
   window.addEventListener("pagehide", persistPosition);
   document.addEventListener("visibilitychange", persistPosition);
@@ -208,7 +220,7 @@ export function initNoteEditor(note, { onText, onCursor, onHistory, positionStor
     if (!writable || event.defaultPrevented || event.button !== 0 ||
         event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
     const target = event.target;
-    if (target.closest(".cm-line, .cm-gutters, .smart-search-panel, button, a, input, label")) return;
+    if (target.closest(".cm-line, .cm-gutters, .smart-search-panel, .editor-status-bar, button, a, input, label")) return;
 
     const scroller = editor.scrollDOM;
     if (scroller.contains(target)) {
@@ -280,6 +292,27 @@ export function initNoteEditor(note, { onText, onCursor, onHistory, positionStor
   window.addEventListener("blur", queueCursor);
 
   return {
+    captureInsertion(range) {
+      if (!writable) return null;
+      const { from, to } = range ?? editor.state.selection.main;
+      if (note.toString() !== editor.state.doc.toString()) return null;
+      return captureInsertion(note, from, to);
+    },
+    insertAtAnchor(anchor, text) {
+      if (!writable || note.toString() !== editor.state.doc.toString()) return false;
+      const range = resolveInsertion(anchor, note);
+      if (!range) return false;
+      if (typeof text === "function") text = text(note.toString(), range.from, range.to);
+      if (typeof text !== "string") return false;
+      isolatedEdit(() => editor.dispatch({ changes: { ...range, insert: text }, selection: { anchor: range.from + text.length }, scrollIntoView: true, userEvent: "input" }));
+      return true;
+    },
+    refreshReferences() {
+      if (destroyed || referenceRefreshQueued) return;
+      referenceRefreshQueued = true;
+      queueMicrotask(() => { referenceRefreshQueued = false; if (!destroyed) { smart.refresh(editor); search.refresh(editor); } });
+    },
+    insertionCoords() { return editor.coordsAtPos(editor.state.selection.main.head); },
     activatePosition,
     saveScrollPosition: persistPosition,
     restoreScrollPosition: restoreScroll,
@@ -292,7 +325,7 @@ export function initNoteEditor(note, { onText, onCursor, onHistory, positionStor
       editor.dispatch({ effects: wrapping.reconfigure(enabled ? EditorView.lineWrapping : []) });
     },
     setLineNumbers(enabled) {
-      editor.dispatch({ effects: gutters.reconfigure(enabled ? lineNumbers() : []) });
+      editor.dispatch({ effects: gutters.reconfigure(enabled ? [lineNumbers(), highlightActiveLineGutter()] : []) });
     },
     setEditing(enabled) {
       if (writable === enabled) return;
@@ -340,6 +373,7 @@ export function initNoteEditor(note, { onText, onCursor, onHistory, positionStor
       draw();
     },
     destroy() {
+      destroyed = true;
       persistPosition();
       cancelAnimationFrame(positionFrame);
       editor.scrollDOM.removeEventListener("scroll", queuePosition);
@@ -354,6 +388,7 @@ export function initNoteEditor(note, { onText, onCursor, onHistory, positionStor
       window.removeEventListener("blur", queueCursor);
       notePanel.removeEventListener("pointerdown", onNotePointerDown, true);
       notePanel.removeEventListener("click", onNoteClick);
+      writable = false;
       editor.destroy();
       for (const event of historyEvents) undoManager.off(event, updateHistory);
       undoManager.destroy();
