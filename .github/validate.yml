@@ -1,0 +1,36 @@
+name: Validate DropNote
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # The deployment tests otherwise skip on systems without Docker.
+      - run: docker info
+      - run: npm test
+      - name: Install browser test tooling
+        run: |
+          python3 -m venv .venv-e2e
+          .venv-e2e/bin/pip install -r test/e2e/requirements.txt
+          .venv-e2e/bin/python -m playwright install --with-deps chromium
+      - name: Test production bundles in Chromium
+        run: .venv-e2e/bin/python test/e2e/editor.py
