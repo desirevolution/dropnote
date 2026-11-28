@@ -413,12 +413,13 @@ export class PadStore {
     if (this.getPad(slug)) {
       throw new SlugTakenError(`The Slug "${slug}" is already taken by another Pad`);
     }
+    const now = Date.now();
     const record: PadRecord = {
       spaceId: randomUUID(),
       slug,
       kind: options.kind ?? "plain",
-      createdAt: new Date().toISOString(),
-      expiresAt: options.ttlSeconds === null ? null : new Date(Date.now() + options.ttlSeconds * 1_000).toISOString(),
+      createdAt: new Date(now).toISOString(),
+      expiresAt: options.ttlSeconds === null ? null : new Date(now + options.ttlSeconds * 1_000).toISOString(),
     };
     if (options.displayName) record.displayName = options.displayName;
     if (options.owner) record.owner = options.owner;

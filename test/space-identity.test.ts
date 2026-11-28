@@ -81,3 +81,23 @@ test("deleted attachment IDs cannot be reused, even after restart", t => {
   reopened.recordBlob(pad.slug, "b".repeat(32), 2);
   assert.equal(reopened.usageBytes(), 2);
 });
+
+test("space creation derives both timestamps from one clock reading", t => {
+  const dir = directory(t), store = PadStore.open(dir);
+  const start = Date.parse("2026-01-01T12:00:00.000Z");
+  let tick = start;
+  const clock = t.mock.method(Date, "now", () => tick++);
+  try {
+    const pad = store.createPad("timed", { ttlSeconds: 3600 });
+    assert.equal(pad.createdAt, new Date(start).toISOString());
+    assert.equal(Date.parse(pad.expiresAt!) - Date.parse(pad.createdAt), 3_600_000);
+    assert.equal(clock.mock.callCount(), 1);
+    const permanent = store.createPad("permanent", { ttlSeconds: null });
+    assert.equal(permanent.createdAt, new Date(start + 1).toISOString());
+    assert.equal(permanent.expiresAt, null);
+  } finally {
+    clock.mock.restore();
+  }
+  const saved = PadStore.open(dir).getPad("timed")!;
+  assert.equal(Date.parse(saved.expiresAt!) - Date.parse(saved.createdAt), 3_600_000);
+});
