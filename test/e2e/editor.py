@@ -92,7 +92,7 @@ def geometry(page):
 
 
 def run(browser, base):
-    context = browser.new_context(locale="en-US", viewport={"width": 1280, "height": 900}, accept_downloads=True)
+    context = browser.new_context(locale="en-US", viewport={"width": 1280, "height": 900}, color_scheme="light", accept_downloads=True)
     errors = []
     context.on("page", lambda page: page.on("pageerror", lambda e: errors.append(str(e))))
     a = context.new_page()
@@ -121,7 +121,11 @@ def run(browser, base):
     a.locator("#note-view > summary").click()
     blur(a)
     geometry(a)
+    # The theme switch lives inside a collapsed Appearance menu.
+    a.locator("#appearance-menu > summary").click()
+    expect(a.locator("#theme-toggle")).to_be_visible()
     a.locator("#theme-toggle").click()
+    expect(a.locator("html")).to_have_attribute("data-theme", "dark")
     geometry(a)
     view_options(a)
     a.locator("#markdown-formatting").uncheck()
